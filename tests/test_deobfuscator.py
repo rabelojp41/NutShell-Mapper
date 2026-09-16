@@ -18,13 +18,16 @@ import zlib
 import pytest
 
 from core.deobfuscator import (
+    LEGIBILIDADE_MINIMA,
     PONTUACAO_MINIMA,
     Tecnica,
     desofuscar,
     desofuscar_blob,
     desofuscar_valor,
     entropia_shannon,
+    legibilidade,
     parece_codificado,
+    parece_texto_claro,
     pontuar,
     razao_imprimivel,
 )
@@ -215,6 +218,72 @@ def test_nao_inventa_achado_em_nome_de_api():
 
 def test_texto_em_claro_nao_gera_achado():
     assert desofuscar_valor("Mozilla/5.0 (Windows NT 10.0; Win64)") == []
+
+
+@pytest.mark.parametrize(
+    "prosa",
+    [
+        "This indicates a bug in your application. It is most likely the result",
+        "Expected to find a command ending in .exe in the shebang line",
+        "Unable to create process using the given path",
+        "Attempt to initialize the CRT more than once",
+    ],
+)
+def test_prosa_em_claro_nao_e_candidata(prosa):
+    """
+    Regressao: mensagem de erro do compilador era aceita como candidata a
+    ROT13 (e 100% alfabetica), e o ROT13 seguido de XOR produzia lixo que
+    por acaso continha ancora como ".dll" ou "HKLM".
+    """
+    assert parece_texto_claro(prosa) is True
+    assert parece_codificado(prosa) is False
+
+
+def test_dado_codificado_nao_e_confundido_com_prosa():
+    """O corte de prosa nao pode descartar dado realmente codificado."""
+    assert parece_texto_claro(base64.b64encode(b"http://c2.top/a").decode()) is False
+    assert parece_texto_claro(b"cmd.exe /c whoami".hex()) is False
+
+
+def test_legibilidade():
+    assert legibilidade("http://c2-node.top/gate.php") == 1.0
+    assert legibilidade("") == 0.0
+    # Regressao: este passava por ser 100% imprimivel e conter ".dll".
+    assert legibilidade("^A.DLLLOLL^") < LEGIBILIDADE_MINIMA
+
+
+def test_ancora_dentro_de_lixo_nao_vira_achado():
+    """
+    Regressao: XOR de string binaria produziu "^A.DLLLOLL^", que contem a
+    ancora ".dll" mas nao e texto nenhum.
+    """
+    lixo = bytes(b ^ 0x01 for b in b"^A.DLLLOLL^")
+    for a in desofuscar_blob(lixo):
+        assert legibilidade(a.decodificado) >= LEGIBILIDADE_MINIMA
+
+
+def test_binario_benigno_nao_gera_achado():
+    """
+    Um binario legitimo nao deve produzir nenhum achado de desofuscacao.
+    E o teste que mais pega regressao de falso positivo.
+    """
+    import pathlib
+    import sys as _sys
+
+    floss = pathlib.Path(_sys.executable).parent / "floss.exe"
+    if not floss.exists():
+        pytest.skip("floss.exe nao disponivel neste ambiente")
+
+    from core.string_extractor import extrair
+
+    extracao = extrair(floss, usar_floss=False)
+    resultado = desofuscar(extracao.strings)
+
+    assert resultado.candidatos_avaliados > 0, "triagem descartou tudo: teste inutil"
+    assert resultado.achados == [], (
+        f"falso positivo em binario benigno: "
+        f"{[(a.cadeia, a.decodificado[:40]) for a in resultado.achados]}"
+    )
 
 
 def test_string_aleatoria_nao_produz_xor_falso():

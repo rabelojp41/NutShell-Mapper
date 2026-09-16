@@ -30,6 +30,7 @@ import gzip
 import logging
 import math
 import re
+import string as _string
 import sys
 import zlib
 from collections import Counter, deque
@@ -234,6 +235,29 @@ def razao_imprimivel(dados: bytes) -> float:
     return imprimiveis / len(dados)
 
 
+# Caracteres que aparecem em texto, caminho, URL e linha de comando reais.
+# Tudo fora daqui e sinal de que o "resultado" ainda e lixo.
+CARACTERES_DE_TEXTO = frozenset(
+    _string.ascii_letters + _string.digits + " ._-/\\:@?=&%+#'\"(),;!*~$[]{}<>\n\r\t"
+)
+
+# Fracao minima de caracteres de texto para um resultado ser considerado
+# legivel. Vale so para as tecnicas que preservam a forma de texto.
+LEGIBILIDADE_MINIMA = 0.90
+
+
+def legibilidade(texto: str) -> float:
+    """
+    Fracao de caracteres que ocorrem em texto, caminho ou URL reais.
+
+    Complementa a razao de imprimiveis, que e cega demais: "^A.DLLLOLL^" e
+    100% imprimivel e contem a ancora ".dll", mas nao e texto nenhum.
+    """
+    if not texto:
+        return 0.0
+    return sum(1 for c in texto if c in CARACTERES_DE_TEXTO) / len(texto)
+
+
 def _ancoras_em(texto: str) -> tuple[str, ...]:
     """Ancoras presentes no texto, comparadas sem diferenciar maiuscula."""
     minusculo = texto.lower()
@@ -292,6 +316,37 @@ def pontuar(dados: bytes) -> tuple[float, tuple[str, ...]]:
 # ============================================================
 
 
+# Palavras muito frequentes em ingles e portugues. Duas delas numa string
+# ja indicam prosa em texto claro - e prosa em claro nao tem o que
+# desofuscar. Sem este corte, mensagens de erro do proprio compilador eram
+# tratadas como candidatas a ROT13 e produziam achados falsos.
+PALAVRAS_COMUNS = frozenset(
+    """
+    the and for not you your this that with from have has was were are is
+    it in to of on at by or as be an if can could would should will
+    error failed failure unable cannot invalid missing expected found
+    file files open close read write create delete name value
+    de do da dos das que nao para com uma como mais ser foi sao esta este
+    erro falha arquivo nome valor
+    """.split()
+)
+
+RE_PALAVRA = re.compile(r"[A-Za-z]{2,}")
+
+
+def parece_texto_claro(valor: str) -> bool:
+    """
+    Detecta prosa que ja esta legivel.
+
+    Serve de corte na triagem: "This indicates a bug in your application"
+    e 100% alfabetica, entao a regra ingenua de "muita letra, pode ser
+    ROT13" a aceitava. Rodar ROT13 e XOR sobre prosa gera lixo que, por
+    coincidencia, as vezes contem uma ancora como ".dll" ou "HKLM".
+    """
+    palavras = {p.lower() for p in RE_PALAVRA.findall(valor)}
+    return len(palavras & PALAVRAS_COMUNS) >= 2
+
+
 def _limpar(valor: str) -> str:
     """Remove espacos em branco das bordas e aspas que cercam a string."""
     return valor.strip().strip("\"'`")
@@ -312,6 +367,10 @@ def parece_codificado(valor: str) -> bool:
     # Se a string ja contem uma ancora, ela ja esta em claro - nao ha o que
     # desofuscar. (O XOR ainda e tentado a parte, sobre o blob bruto.)
     if _ancoras_em(valor):
+        return False
+
+    # Prosa legivel tambem ja esta em claro.
+    if parece_texto_claro(valor):
         return False
 
     # Formato reconhecivel de codificacao passa direto.
@@ -474,12 +533,26 @@ def _aceitar(
     cadeia: tuple[Tecnica, ...],
     nota: float,
     ancoras: tuple[str, ...],
+    saida: bytes,
 ) -> bool:
-    """Decide se uma decodificacao vira achado reportado."""
+    """
+    Decide se uma decodificacao vira achado reportado.
+
+    Para ROT13 e XOR, exigir ancora nao basta: a ancora pode cair dentro de
+    lixo por coincidencia. Um XOR de string binaria produziu "^A.DLLLOLL^",
+    que contem ".dll" e passava. Dai a exigencia adicional de legibilidade,
+    que olha a forma do resultado inteiro e nao so um trecho dele.
+    """
     if nota < PONTUACAO_MINIMA:
         return False
-    if TECNICAS_QUE_PRESERVAM_FORMA.intersection(cadeia) and not ancoras:
-        return False
+
+    if TECNICAS_QUE_PRESERVAM_FORMA.intersection(cadeia):
+        if not ancoras:
+            return False
+        texto = saida.decode("utf-8", "replace")
+        if legibilidade(texto) < LEGIBILIDADE_MINIMA:
+            return False
+
     return True
 
 
@@ -522,7 +595,7 @@ def _explorar(
                 nova_cadeia = cadeia + (tecnica,)
                 nota, ancoras = pontuar(saida)
 
-                if _aceitar(nova_cadeia, nota, ancoras):
+                if _aceitar(nova_cadeia, nota, ancoras, saida):
                     yield nova_cadeia, chave_nova or chave, saida, nota, ancoras
 
                 # Segue a cadeia mesmo com nota baixa: o estagio intermediario
