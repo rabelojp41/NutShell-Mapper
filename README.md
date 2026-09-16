@@ -147,7 +147,7 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 python -m pytest
 ```
 
-361 testes, todos offline: nenhum faz requisicao de rede nem depende do
+365 testes, todos offline: nenhum faz requisicao de rede nem depende do
 bundle de ~50 MB do ATT&CK.
 
 Alguns deles rodam a emulacao real do FLOSS sobre shellcode gerado, e sao a
