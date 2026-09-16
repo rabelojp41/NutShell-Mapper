@@ -284,3 +284,153 @@ def test_arquivo_vazio(tmp_path):
     vazio.write_bytes(b"")
     with pytest.raises(ErroExtracao):
         extrair(vazio)
+
+
+# ============================================================
+# FLOSS de verdade: strings construidas em runtime
+#
+# Estes testes rodam o FLOSS real sobre shellcode gerado, e sao os unicos
+# da suite que exercitam a emulacao. Existem porque o diferencial do FLOSS
+# e recuperar string que nunca aparece literal no arquivo, e esse caminho
+# nao pode ser validado com binario benigno nem com duble.
+# ============================================================
+
+import shutil
+import subprocess
+import sys as _sys
+from pathlib import Path as _Path
+
+from tests.shellcode_de_teste import ANCORA_ESTATICA, gerar_amostra
+
+TEXTOS_OCULTOS = [
+    "http://stack-c2.top/gate.php",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+    "cmd.exe /c whoami",
+]
+
+
+def _floss_disponivel() -> bool:
+    candidato = _Path(_sys.executable).parent / "floss.exe"
+    return candidato.exists() or shutil.which("floss") is not None
+
+
+# Estes testes rodam a emulacao de verdade e levam dezenas de segundos.
+# Para pular: python -m pytest -m "not lento"
+precisa_de_floss = pytest.mark.skipif(
+    not _floss_disponivel(), reason="FLOSS nao esta instalado neste ambiente"
+)
+lento = pytest.mark.lento
+
+
+@pytest.fixture(scope="module")
+def shellcode(tmp_path_factory):
+    caminho = tmp_path_factory.mktemp("sc") / "runtime.bin"
+    caminho.write_bytes(gerar_amostra(TEXTOS_OCULTOS))
+    return caminho
+
+
+def test_shellcode_nao_contem_as_strings_literais(shellcode):
+    """
+    A premissa do teste: se as strings estivessem literais no arquivo, o
+    extrator nativo as acharia e nada sobre o FLOSS estaria sendo provado.
+    """
+    dados = shellcode.read_bytes()
+    for texto in TEXTOS_OCULTOS:
+        assert texto.encode() not in dados
+    # A ancora, essa sim, precisa estar literal.
+    assert ANCORA_ESTATICA in dados
+
+
+def test_extrator_nativo_nao_ve_as_strings_ocultas(shellcode):
+    valores = {s.valor for s in extrair(shellcode, usar_floss=False).strings}
+    for texto in TEXTOS_OCULTOS:
+        assert texto not in valores
+
+
+@precisa_de_floss
+@lento
+def test_floss_recupera_strings_de_runtime(shellcode):
+    """
+    O teste central do modulo: o FLOSS emula o codigo e recupera strings
+    que a varredura estatica nao ve.
+    """
+    resultado = extrair(shellcode, timeout=300)
+
+    assert resultado.usou_floss is True
+    assert resultado.formato_floss == "sc32"
+
+    de_runtime = {
+        s.valor
+        for s in resultado.strings
+        if s.tipo is not TipoString.STATIC
+    }
+    for texto in TEXTOS_OCULTOS:
+        assert texto in de_runtime, f"o FLOSS nao recuperou {texto!r}"
+
+
+@precisa_de_floss
+@lento
+def test_ioc_oculto_chega_com_a_procedencia_certa(shellcode):
+    """O IOC precisa saber que veio de string construida em runtime."""
+    resultado = extrair(shellcode, timeout=300)
+
+    url = next(i for i in resultado.iocs if i.tipo is TipoIOC.URL)
+    assert url.valor == "http://stack-c2.top/gate.php"
+    assert url.confianca is Confianca.ALTA
+    assert url.tipo_string is not TipoString.STATIC
+
+
+@precisa_de_floss
+@lento
+def test_arquitetura_de_shellcode_e_deduzida_com_aviso(shellcode):
+    """
+    Shellcode nao tem cabecalho de onde deduzir a arquitetura. O framework
+    tenta as duas, e o palpite precisa ficar registrado.
+    """
+    resultado = extrair(shellcode, timeout=300)
+    assert any("shellcode sc32" in a for a in resultado.avisos)
+
+
+@precisa_de_floss
+@lento
+def test_formato_explicito_e_respeitado(shellcode):
+    resultado = extrair(shellcode, formato="sc32", timeout=300)
+    assert resultado.formato_floss == "sc32"
+    assert resultado.usou_floss is True
+
+
+def test_saida_vazia_do_floss_tem_mensagem_honesta(tmp_path, monkeypatch):
+    """
+    O FLOSS encerra a analise inteira, em silencio e com codigo 0, quando o
+    arquivo nao tem nenhuma string estatica - ha um `if not static_strings:
+    return 0` no main dele. Reportar isso como "FLOSS falhou: codigo de
+    saida 0" seria enganoso: ele rodou bem e decidiu nao analisar.
+
+    O gatilho e dificil de reproduzir de forma deterministica (codigo de
+    maquina costuma conter sequencias ASCII por acaso), entao o que se
+    testa aqui e a nossa reacao, simulando a saida vazia.
+    """
+    import subprocess as _sub
+
+    from core import string_extractor
+
+    class _Processo:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    monkeypatch.setattr(_sub, "run", lambda *a, **k: _Processo())
+    monkeypatch.setattr(
+        string_extractor, "_localizar_floss", lambda: "floss-simulado"
+    )
+
+    amostra = tmp_path / "vazio_para_o_floss.bin"
+    amostra.write_bytes(b"conteudo qualquer para o extrator nativo achar " * 4)
+
+    resultado = extrair(amostra, formato="sc32")
+
+    assert resultado.usou_floss is False  # caiu no extrator nativo
+    assert any("nenhuma string estatica" in a for a in resultado.avisos)
+    assert not any("codigo de saida 0" in a for a in resultado.avisos)
+    # O extrator nativo salvou a analise.
+    assert resultado.strings

@@ -73,6 +73,9 @@ class OpcoesAnalise:
 
     # --- Analise local ---
     usar_floss: bool = True
+    # "auto", "pe", "sc32" ou "sc64". Em auto, artefato sem cabecalho de PE
+    # e tentado como shellcode nas duas arquiteturas.
+    formato: str = "auto"
     tamanho_minimo_de_string: int = 4
     timeout_floss: int = 300
     gerar_yara: bool = True
@@ -339,6 +342,7 @@ def analisar(
             tamanho_minimo=opcoes.tamanho_minimo_de_string,
             usar_floss=opcoes.usar_floss,
             timeout=opcoes.timeout_floss,
+            formato=opcoes.formato,
         ),
         fatal=True,
     )

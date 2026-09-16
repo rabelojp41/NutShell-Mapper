@@ -157,6 +157,7 @@ def comando_analisar(args: argparse.Namespace) -> int:
 
     opcoes = OpcoesAnalise(
         usar_floss=not args.sem_floss,
+        formato=args.formato,
         tamanho_minimo_de_string=args.min_string,
         timeout_floss=args.timeout_floss,
         gerar_yara=not args.sem_yara,
@@ -336,6 +337,11 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--sem-floss", action="store_true",
                    help="usa apenas o extrator nativo (mais rapido)")
+    p.add_argument(
+        "--formato", choices=["auto", "pe", "sc32", "sc64"], default="auto",
+        help="formato do artefato. Em auto, arquivo sem cabecalho de PE e "
+             "tentado como shellcode nas duas arquiteturas",
+    )
     p.add_argument("--sem-yara", action="store_true", help="nao gera regra YARA")
     p.add_argument("--sem-stix", action="store_true",
                    help="usa so o catalogo local de tecnicas")

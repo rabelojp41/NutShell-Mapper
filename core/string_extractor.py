@@ -46,6 +46,14 @@ TAMANHO_MINIMO_PADRAO = 4
 # Emulacao do FLOSS pode demorar bastante em binario grande.
 TIMEOUT_FLOSS_PADRAO = 300
 
+# Formatos que o FLOSS sabe analisar. O "auto" dele so reconhece PE: para
+# shellcode cru e preciso dizer a arquitetura explicitamente, porque nao ha
+# cabecalho nenhum de onde deduzi-la.
+FORMATOS_FLOSS = ("pe", "sc32", "sc64")
+
+# Trecho da mensagem com que o FLOSS recusa um arquivo sem cabecalho de PE.
+RECUSA_DE_SHELLCODE = "--format sc32|sc64"
+
 
 # ============================================================
 # Tipos
@@ -139,6 +147,8 @@ class ResultadoExtracao:
 
     # Dados de execucao, uteis para o relatorio saber no que confiar.
     usou_floss: bool = False
+    # Formato com que o FLOSS analisou: pe, sc32, sc64 ou auto.
+    formato_floss: str = ""
     avisos: list[str] = field(default_factory=list)
 
     # --- Consultas de conveniencia ---
@@ -325,9 +335,14 @@ def _rodar_floss(
     caminho: Path,
     tamanho_minimo: int,
     timeout: int,
+    formato: str | None = None,
 ) -> tuple[list[StringExtraida], list[str]]:
     """
     Executa o FLOSS e converte a saida JSON em StringExtraida.
+
+    Args:
+        formato: "pe", "sc32" ou "sc64". None deixa o FLOSS detectar, o que
+            na pratica so funciona para PE.
 
     Devolve (strings, avisos). Levanta RuntimeError se o FLOSS nao puder ser
     usado - quem chama decide cair no fallback.
@@ -336,7 +351,10 @@ def _rodar_floss(
     if executavel is None:
         raise RuntimeError("FLOSS nao encontrado no PATH nem no ambiente atual")
 
-    comando = [executavel, "-j", "-n", str(tamanho_minimo), "--", str(caminho)]
+    comando = [executavel, "-j", "-n", str(tamanho_minimo)]
+    if formato:
+        comando += ["-f", formato]
+    comando += ["--", str(caminho)]
     logger.debug("executando: %s", " ".join(comando))
 
     try:
@@ -350,6 +368,17 @@ def _rodar_floss(
         raise RuntimeError(f"FLOSS excedeu o timeout de {timeout}s") from erro
     except OSError as erro:
         raise RuntimeError(f"nao foi possivel executar o FLOSS: {erro}") from erro
+
+    if proc.returncode == 0 and not proc.stdout.strip():
+        # O FLOSS desiste da analise inteira, em silencio e com codigo 0,
+        # quando o arquivo nao tem nenhuma string estatica - ha um
+        # `if not static_strings: return 0` no main dele. Tratar isso como
+        # "FLOSS falhou: codigo de saida 0" seria enganoso: ele rodou bem e
+        # decidiu nao analisar.
+        raise RuntimeError(
+            "o FLOSS nao produziu saida; ele encerra sem analisar quando o "
+            "arquivo nao contem nenhuma string estatica"
+        )
 
     if proc.returncode != 0 or not proc.stdout.strip():
         detalhe = proc.stderr.decode("utf-8", "replace").strip().splitlines()
@@ -678,11 +707,79 @@ def _hashes(dados: bytes) -> tuple[str, str]:
     return hashlib.md5(dados).hexdigest(), hashlib.sha256(dados).hexdigest()
 
 
+def _rodar_floss_com_deteccao(
+    caminho: Path,
+    dados: bytes,
+    tamanho_minimo: int,
+    timeout: int,
+    formato: str,
+) -> tuple[list[StringExtraida], list[str], str]:
+    """
+    Roda o FLOSS escolhendo o formato adequado ao artefato.
+
+    O "auto" do proprio FLOSS so reconhece PE: shellcode cru nao tem
+    cabecalho de onde deduzir a arquitetura, e ele recusa o arquivo pedindo
+    --format. Como shellcode e artefato comum em CTI (beacon, payload de
+    exploit, dropper ja extraido), vale tentar as duas arquiteturas em vez
+    de desistir.
+
+    Devolve (strings, avisos, formato efetivamente usado).
+    """
+    if formato in FORMATOS_FLOSS:
+        strings, avisos = _rodar_floss(caminho, tamanho_minimo, timeout, formato)
+        return strings, avisos, formato
+
+    # Arquivo com cabecalho de PE: o caminho normal resolve.
+    if dados[:2] == b"MZ":
+        strings, avisos = _rodar_floss(caminho, tamanho_minimo, timeout)
+        return strings, avisos, "pe"
+
+    try:
+        strings, avisos = _rodar_floss(caminho, tamanho_minimo, timeout)
+        return strings, avisos, "auto"
+    except RuntimeError as erro:
+        if RECUSA_DE_SHELLCODE not in str(erro):
+            raise
+
+    # O FLOSS pediu o formato: tenta as duas arquiteturas e fica com a que
+    # recuperar mais strings de runtime, que sao o motivo de usar o FLOSS.
+    melhor: tuple[list[StringExtraida], list[str], str] | None = None
+    melhor_pontuacao = -1
+
+    for arquitetura in ("sc32", "sc64"):
+        try:
+            strings, avisos = _rodar_floss(
+                caminho, tamanho_minimo, timeout, arquitetura
+            )
+        except RuntimeError as erro:
+            logger.debug("FLOSS com %s falhou: %s", arquitetura, erro)
+            continue
+
+        de_runtime = sum(1 for s in strings if s.tipo is not TipoString.STATIC)
+        if de_runtime > melhor_pontuacao:
+            melhor_pontuacao = de_runtime
+            melhor = (strings, avisos, arquitetura)
+
+    if melhor is None:
+        raise RuntimeError(
+            "o artefato nao e PE e o FLOSS nao conseguiu analisa-lo como "
+            "shellcode de 32 nem de 64 bits"
+        )
+
+    strings, avisos, arquitetura = melhor
+    avisos.append(
+        f"artefato analisado como shellcode {arquitetura}: nao ha cabecalho "
+        "de PE, entao a arquitetura foi deduzida por tentativa"
+    )
+    return strings, avisos, arquitetura
+
+
 def extrair(
     caminho: str | Path,
     tamanho_minimo: int = TAMANHO_MINIMO_PADRAO,
     usar_floss: bool = True,
     timeout: int = TIMEOUT_FLOSS_PADRAO,
+    formato: str = "auto",
 ) -> ResultadoExtracao:
     """
     Extrai strings e IOCs de um artefato.
@@ -693,6 +790,8 @@ def extrair(
         usar_floss: se False, pula direto para o extrator nativo (util em
             teste, onde a emulacao custa caro e nao acrescenta nada).
         timeout: limite em segundos para o FLOSS.
+        formato: "auto", "pe", "sc32" ou "sc64". Em "auto", artefato sem
+            cabecalho de PE e tentado como shellcode nas duas arquiteturas.
 
     Returns:
         ResultadoExtracao com strings, IOCs, hashes e avisos.
@@ -723,10 +822,13 @@ def extrair(
 
     if usar_floss:
         try:
-            strings, avisos = _rodar_floss(caminho, tamanho_minimo, timeout)
+            strings, avisos, usado = _rodar_floss_com_deteccao(
+                caminho, dados, tamanho_minimo, timeout, formato
+            )
             resultado.strings = strings
             resultado.avisos.extend(avisos)
             resultado.usou_floss = True
+            resultado.formato_floss = usado
         except RuntimeError as erro:
             # Nao e fatal: o extrator nativo ainda entrega strings estaticas.
             logger.warning("FLOSS indisponivel, usando extrator nativo (%s)", erro)

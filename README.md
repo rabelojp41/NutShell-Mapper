@@ -26,7 +26,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 
 | Modulo | Responsabilidade |
 |---|---|
-| `core/string_extractor.py` | roda FLOSS (static/stack/tight/decoded), com extrator nativo de fallback; identifica IOCs por regex com nivel de confianca |
+| `core/string_extractor.py` | roda FLOSS (static/stack/tight/decoded) em PE **e em shellcode cru**, com extrator nativo de fallback; identifica IOCs por regex com nivel de confianca |
 | `core/deobfuscator.py` | Base64, Base32, hex, ROT13, XOR de 1 byte, zlib e gzip, encadeados ate profundidade 3; triagem por entropia e pontuacao de plausibilidade |
 | `core/pe_analyzer.py` | imports, exports, secoes com entropia, imphash, recursos e indicios estruturais |
 | `core/yara_generator.py` | seleciona as strings mais distintivas, gera a regra e a **valida contra o proprio artefato** antes de considera-la utilizavel |
@@ -96,7 +96,14 @@ Outros comandos:
 Opcoes uteis do `analisar`: `--sem-floss` (bem mais rapido, so strings
 estaticas), `--sem-stix` (offline), `--benigno arquivo.exe` (testa a regra
 YARA contra um binario legitimo), `--enriquecer` (consulta VirusTotal e
-Shodan).
+Shodan), `--formato sc32|sc64` (forca a arquitetura de um shellcode).
+
+### Shellcode
+
+Artefato sem cabecalho de PE - beacon extraido, payload de exploit, dropper
+ja desempacotado - e tentado como shellcode de 32 e de 64 bits
+automaticamente. A arquitetura deduzida fica registrada como aviso no
+relatorio, porque foi um palpite e nao um fato lido de um cabecalho.
 
 ### Interface grafica
 
@@ -111,11 +118,20 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 ### Testes
 
 ```bash
-python -m pytest tests/ -q
+python -m pytest
 ```
 
-328 testes, todos offline: nenhum faz requisicao de rede nem depende do
-bundle de 45 MB do ATT&CK.
+335 testes, todos offline: nenhum faz requisicao de rede nem depende do
+bundle de ~50 MB do ATT&CK.
+
+Alguns deles rodam a emulacao real do FLOSS sobre shellcode gerado, e sao a
+unica forma de validar a recuperacao de strings construidas em tempo de
+execucao - o diferencial da ferramenta, que binario benigno nao exercita.
+Levam uns 30 segundos. Para pular:
+
+```bash
+python -m pytest -m "not lento"
+```
 
 ## Seguranca
 
