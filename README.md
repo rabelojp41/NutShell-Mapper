@@ -41,16 +41,34 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 
 ## Instalacao
 
+> **Requer Python 3.10.x no Windows.** O `flare-floss` depende de
+> `binary2strings`, extensao C++ que so publica wheel pre-compilada para
+> `cp310`. Em 3.11/3.12/3.13/3.14 o pip tenta compilar do zero e falha com
+> `Unable to find a compatible Visual Studio installation`.
+
+```bash
+winget install -e --id Python.Python.3.10
+```
+
 ```bash
 git clone https://github.com/rabelojp41/RabMapper.git
 cd RabMapper
-python -m venv .venv
-.venv\Scripts\activate      # Windows
+py -3.10 -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 copy config\.env.example config\.env
 ```
 
 Preencha `config/.env` com suas chaves de API.
+
+### Verificar a instalacao
+
+```bash
+python -m tests.check_env
+```
+
+Valida que FLOSS, yara-python, pefile, mitreattack-python, cvss, reportlab,
+python-docx e PySide6 importam corretamente.
 
 ## Uso
 

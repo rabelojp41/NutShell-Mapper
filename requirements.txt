@@ -1,10 +1,14 @@
 # ============================================================
 # RabMapper - dependencias
-# Python 3.11+
+# Python 3.10.x (OBRIGATORIO no Windows)
+#
+# Por que 3.10: flare-floss depende de binary2strings, uma extensao C++ que
+# so publica wheel para cp310 no Windows. Em 3.11/3.12/3.13/3.14 o pip tenta
+# compilar do zero e falha sem o Visual Studio Build Tools.
 # ============================================================
 
 # --- Analise estatica / extracao ---
-flare-floss>=3.1.0          # extracao de strings (estaticas, stack, decodificadas)
+flare-floss>=3.1.0,<4                  # extracao de strings (estaticas, stack, decodificadas)
 pefile>=2023.2.7            # parsing de binarios PE (imports, secoes, entropia)
 yara-python>=4.5.0          # compilacao e validacao de regras YARA
 
