@@ -135,6 +135,12 @@ class VirusTotalClient(ClienteBase):
         # 429 para tudo que vier depois, entao e melhor esperar antes.
         super().__init__(api_key, timeout, rate_limit_por_minuto, tentativas)
 
+        # A API v3 autentica pelo cabecalho x-apikey. Definir na sessao faz
+        # valer para toda requisicao, sem depender de cada metodo lembrar de
+        # passar - foi o que faltava, e o resultado era 401 em tudo.
+        if api_key:
+            self.sessao.headers["x-apikey"] = api_key
+
     # ----- Consultas -----
 
     def consultar_hash(self, valor: str) -> ResultadoVirusTotal:

@@ -536,3 +536,61 @@ def test_resultados_serializaveis(sem_espera):
     cliente = ShodanClient(CHAVE_FALSA)
     _responder(cliente, RespostaFalsa(payload={"ports": [80], "data": []}))
     assert json.dumps(cliente.consultar_ip("8.8.8.8").to_dict(), default=str)
+
+
+# ============================================================
+# Autenticacao: o que e ENVIADO
+#
+# Estes testes existem por causa de um bug real. O VirusTotalClient nunca
+# definia o cabecalho x-apikey, entao toda consulta voltava 401 - e ainda
+# assim a suite passava inteira, porque todos os testes verificavam apenas
+# como a RESPOSTA era interpretada, nunca o que a requisicao levava.
+# Duble de resposta nao prova que a requisicao esta certa.
+# ============================================================
+
+
+def test_virustotal_envia_a_chave_no_cabecalho(sem_espera):
+    """
+    Regressao: a API v3 do VirusTotal autentica por `x-apikey`. Sem esse
+    cabecalho tudo devolve 401, e nenhum teste de resposta simulada pega.
+    """
+    cliente = VirusTotalClient(CHAVE_FALSA)
+    assert cliente.sessao.headers.get("x-apikey") == CHAVE_FALSA
+
+    chamadas = _responder(cliente, RespostaFalsa(payload={"data": {"attributes": {}}}))
+    cliente.consultar_hash("a" * 64)
+
+    # A chave viaja na sessao, entao vale para toda requisicao.
+    assert chamadas
+    assert cliente.sessao.headers["x-apikey"] == CHAVE_FALSA
+
+
+def test_virustotal_sem_chave_nao_define_cabecalho():
+    """Cabecalho vazio confundiria o servidor; melhor nao enviar nada."""
+    assert "x-apikey" not in VirusTotalClient("").sessao.headers
+
+
+def test_shodan_envia_a_chave_na_query(sem_espera):
+    """O Shodan autentica por query string, e nao por cabecalho."""
+    cliente = ShodanClient(CHAVE_FALSA)
+    chamadas = _responder(cliente, RespostaFalsa(payload={"ports": [], "data": []}))
+
+    cliente.consultar_ip("8.8.8.8")
+
+    _url, kwargs = chamadas[0]
+    assert kwargs["params"]["key"] == CHAVE_FALSA
+
+
+def test_chave_nao_vai_para_o_lugar_errado(sem_espera):
+    """
+    Cada servico tem seu esquema. Mandar a chave do Shodan num cabecalho, ou
+    a do VT numa query string, falharia de forma silenciosa.
+    """
+    vt = VirusTotalClient(CHAVE_FALSA)
+    chamadas = _responder(vt, RespostaFalsa(payload={"data": {"attributes": {}}}))
+    vt.consultar_hash("a" * 64)
+    _url, kwargs = chamadas[0]
+    assert not (kwargs.get("params") or {}).get("key")
+
+    sh = ShodanClient(CHAVE_FALSA)
+    assert "x-apikey" not in sh.sessao.headers
