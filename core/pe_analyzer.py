@@ -280,12 +280,22 @@ def analisar(caminho: str | Path) -> InfoPE:
     caminho = Path(caminho)
 
     try:
-        pe = pefile.PE(str(caminho), fast_load=False)
+        dados = caminho.read_bytes()
+    except OSError as erro:
+        return InfoPE(e_pe=False, erro=f"nao foi possivel ler o arquivo: {erro}")
+
+    try:
+        # Passa os bytes em vez do caminho de proposito. Com um caminho, o
+        # pefile mapeia o arquivo em memoria (mmap), e o ciclo de vida desse
+        # mmap causa corrupcao de heap (0xc0000374) quando muitos objetos PE
+        # sao criados e destruidos na mesma sessao - o crash aparece depois,
+        # durante a coleta de lixo, longe da causa. Com `data=`, o pefile
+        # trabalha sobre os nossos bytes e nao ha mmap nenhum para fechar.
+        # O arquivo inteiro ja e lido pelo string_extractor de qualquer forma.
+        pe = pefile.PE(data=dados, fast_load=False)
     except pefile.PEFormatError as erro:
         logger.debug("%s nao e um PE: %s", caminho, erro)
         return InfoPE(e_pe=False, erro=str(erro))
-    except OSError as erro:
-        return InfoPE(e_pe=False, erro=f"nao foi possivel ler o arquivo: {erro}")
 
     try:
         cabecalho = pe.FILE_HEADER

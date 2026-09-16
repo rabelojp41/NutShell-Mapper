@@ -345,7 +345,18 @@ def analisar(
 
     if resultado.extracao is None:
         # Sem strings nao ha o que analisar: as demais etapas nao teriam
-        # entrada. Encerra aqui, com o erro ja registrado.
+        # entrada. Encerra aqui.
+        #
+        # Duas causas levam a este ponto e elas precisam ser distinguidas:
+        # o arquivo nao pode ser lido (erro fatal ja registrado) ou o
+        # usuario cancelou antes da primeira etapa (nenhum erro). Sem esta
+        # distincao, um cancelamento voltaria como analise vazia
+        # bem-sucedida.
+        resultado.cancelado = executor.foi_cancelado
+        if resultado.cancelado:
+            resultado.avisos.append(
+                "analise cancelada antes da extracao: nenhum dado foi produzido"
+            )
         resultado.concluido_em = datetime.now(timezone.utc).isoformat()
         resultado.duracao_segundos = time.monotonic() - inicio
         return resultado

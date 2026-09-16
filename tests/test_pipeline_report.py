@@ -411,3 +411,20 @@ def test_pipeline_vazio_ainda_gera_relatorio(tmp_path):
     texto = rg.montar_markdown(vazio)
     assert "Limitacoes desta analise" in texto
     assert rg.salvar_pdf(vazio, tmp_path / "vazio.pdf").exists()
+
+
+def test_cancelamento_antes_da_extracao_e_distinguivel(artefato):
+    """
+    Regressao: cancelar antes da primeira etapa saia pelo caminho de
+    "arquivo ilegivel" e devolvia cancelado=False sem erro registrado, o
+    que era indistinguivel de uma analise vazia bem-sucedida.
+    """
+    r = analisar(
+        artefato,
+        OpcoesAnalise(usar_floss=False, usar_stix=False),
+        cancelado=lambda: True,
+    )
+    assert r.extracao is None
+    assert r.cancelado is True
+    assert r.erros == []  # cancelar nao e erro
+    assert any("cancelada antes da extracao" in a for a in r.avisos)
