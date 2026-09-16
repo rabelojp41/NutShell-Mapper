@@ -310,10 +310,21 @@ def construir_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="log detalhado")
+
+    # O mesmo -v aceito depois do subcomando. Por padrao o argparse so
+    # aceitaria "main.py -v analisar x", e "main.py analisar x -v" daria
+    # erro - um tropeco comum. SUPPRESS faz o valor do subcomando so
+    # sobrescrever o global quando a flag for realmente informada ali.
+    comum = argparse.ArgumentParser(add_help=False)
+    comum.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+        help="log detalhado",
+    )
+
     sub = parser.add_subparsers(dest="comando", required=True)
 
     # --- analisar ---
-    p = sub.add_parser("analisar", help="analisa um artefato")
+    p = sub.add_parser("analisar", help="analisa um artefato", parents=[comum])
     p.add_argument("arquivo", help="caminho do artefato")
     p.add_argument(
         "-o", "--saida", default="output", help="diretorio de saida (padrao: output)"
@@ -352,23 +363,29 @@ def construir_parser() -> argparse.ArgumentParser:
     p.set_defaults(funcao=comando_analisar)
 
     # --- config ---
-    p = sub.add_parser("config", help="mostra a configuracao e verifica o ambiente")
+    p = sub.add_parser(
+        "config", help="mostra a configuracao e verifica o ambiente",
+        parents=[comum],
+    )
     p.set_defaults(funcao=comando_config)
 
     # --- cvss ---
-    p = sub.add_parser("cvss", help="calcula um score CVSS 3.1")
+    p = sub.add_parser("cvss", help="calcula um score CVSS 3.1", parents=[comum])
     p.add_argument("vetor", help='vetor, ex: "AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"')
     p.add_argument("--cve", help="identificador da CVE")
     p.set_defaults(funcao=comando_cvss)
 
     # --- atualizar-attack ---
-    p = sub.add_parser("atualizar-attack", help="baixa o bundle STIX do MITRE ATT&CK")
+    p = sub.add_parser(
+        "atualizar-attack", help="baixa o bundle STIX do MITRE ATT&CK",
+        parents=[comum],
+    )
     p.add_argument("--cache", help="caminho alternativo do cache")
     p.add_argument("--forcar", action="store_true", help="baixa mesmo com cache valido")
     p.set_defaults(funcao=comando_atualizar_attack)
 
     # --- gui ---
-    p = sub.add_parser("gui", help="abre a interface grafica")
+    p = sub.add_parser("gui", help="abre a interface grafica", parents=[comum])
     p.set_defaults(funcao=comando_gui)
 
     return parser

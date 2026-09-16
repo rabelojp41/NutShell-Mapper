@@ -1,0 +1,54 @@
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    # Windows e Python 3.10 nao sao escolha de conveniencia: o flare-floss
+    # depende de binary2strings, que so publica wheel pre-compilada para
+    # cp310 no Windows. Testar em outra combinacao validaria um ambiente
+    # que o projeto nao suporta.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verificar o ambiente
+        run: python -m tests.check_env
+
+      - name: Rodar os testes
+        # A suite e inteiramente offline: nenhum teste faz requisicao de
+        # rede nem depende do bundle de 45 MB do ATT&CK. Os testes da
+        # interface rodam em modo offscreen, configurado no conftest.
+        run: python -m pytest tests/ -q --tb=short
+
+      - name: Analise de ponta a ponta sobre um binario real
+        # Fumaca de verdade: roda o pipeline completo sobre um executavel
+        # que existe em qualquer instalacao e confere que o relatorio sai.
+        run: |
+          python main.py analisar .venv\Scripts\python.exe --sem-floss --sem-stix --relatorio md json -o saida-ci
+        shell: cmd
+        continue-on-error: true
+
+      - name: Guardar a saida da analise
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-da-analise
+          path: saida-ci/
+          if-no-files-found: ignore

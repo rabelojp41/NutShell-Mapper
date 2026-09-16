@@ -114,7 +114,7 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 python -m pytest tests/ -q
 ```
 
-317 testes, todos offline: nenhum faz requisicao de rede nem depende do
+328 testes, todos offline: nenhum faz requisicao de rede nem depende do
 bundle de 45 MB do ATT&CK.
 
 ## Seguranca

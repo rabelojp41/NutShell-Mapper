@@ -322,7 +322,7 @@ def test_enriquecimento_sobrepoe_o_catalogo(attack):
     t = next(t for t in resultado.tecnicas if t.tecnica_id == "T1055")
     assert t.confirmada_no_stix
     assert t.nome == "Process Injection"
-    assert set(t.taticas) == {"defense-evasion", "privilege-escalation"}
+    assert set(t.taticas) == {"stealth", "privilege-escalation"}
     assert t.url.startswith("https://attack.mitre.org/techniques/")
     assert resultado.fonte == "stix"
     assert resultado.versao_attack == "99.0"
@@ -523,3 +523,188 @@ def test_sinal_fraco_com_reforco_volta_a_reportar():
     extracao = _extracao("VBoxService.exe detectado")
     resultado = mapear(extracao, info_pe=_pe(["GetTickCount"]))
     assert "T1497.001" in _ids(resultado)
+
+
+# ============================================================
+# Download com retomada
+# ============================================================
+
+
+class _RespostaDownload:
+    """Imita a resposta em stream do requests."""
+
+    def __init__(self, corpo: bytes, status: int = 200, erro_no_meio: bool = False):
+        self.status_code = status
+        self._corpo = corpo
+        self._erro_no_meio = erro_no_meio
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def iter_content(self, chunk_size=1):
+        metade = len(self._corpo) // 2
+        yield self._corpo[:metade]
+        if self._erro_no_meio:
+            raise ConnectionResetError("conexao cortada no meio")
+        yield self._corpo[metade:]
+
+
+@pytest.fixture
+def sem_espera_mitre(monkeypatch):
+    monkeypatch.setattr("core.mitre_mapper.time.sleep", lambda _s: None)
+
+
+def _bundle_bytes() -> bytes:
+    return json.dumps({"type": "bundle", "objects": []}).encode()
+
+
+def test_download_retoma_de_onde_parou(tmp_path, monkeypatch, sem_espera_mitre):
+    """
+    Regressao de caso real: o bundle de 45 MB foi cortado no meio por
+    ConnectionReset. Recomecar do zero a cada queda pode nunca terminar.
+    """
+    corpo = _bundle_bytes()
+    chamadas = []
+
+    def falso_get(url, timeout=None, stream=None, headers=None):
+        chamadas.append(headers or {})
+        if len(chamadas) == 1:
+            return _RespostaDownload(corpo, erro_no_meio=True)
+        # Segunda tentativa: devolve so o que falta, como um 206 real.
+        ja = int(headers["Range"].split("=")[1].rstrip("-"))
+        return _RespostaDownload(corpo[ja:], status=206)
+
+    monkeypatch.setattr("requests.get", falso_get)
+
+    attack = MitreAttack(tmp_path / "cache.json")
+    attack.baixar()
+
+    assert len(chamadas) == 2
+    assert "Range" not in chamadas[0]
+    assert chamadas[1]["Range"].startswith("bytes=")
+    # O conteudo final precisa ser exatamente o original, sem duplicacao.
+    assert (tmp_path / "cache.json").read_bytes() == corpo
+
+
+def test_servidor_que_ignora_range_recomeca_do_zero(tmp_path, monkeypatch, sem_espera_mitre):
+    """
+    Se o servidor responde 200 com o arquivo inteiro apesar do Range, o
+    parcial precisa ser descartado - senao o conteudo ficaria duplicado.
+    """
+    corpo = _bundle_bytes()
+    chamadas = []
+
+    def falso_get(url, timeout=None, stream=None, headers=None):
+        chamadas.append(headers or {})
+        if len(chamadas) == 1:
+            return _RespostaDownload(corpo, erro_no_meio=True)
+        return _RespostaDownload(corpo, status=200)  # ignora o Range
+
+    monkeypatch.setattr("requests.get", falso_get)
+
+    attack = MitreAttack(tmp_path / "cache.json")
+    attack.baixar()
+
+    assert (tmp_path / "cache.json").read_bytes() == corpo
+
+
+def test_arquivo_truncado_e_detectado(tmp_path, monkeypatch, sem_espera_mitre):
+    """
+    Uma queda pode encerrar o stream sem excecao. O arquivo truncado so
+    falharia depois, na carga, com mensagem confusa.
+    """
+    truncado = _bundle_bytes()[:-5]
+    monkeypatch.setattr(
+        "requests.get",
+        lambda *a, **k: _RespostaDownload(truncado, status=200),
+    )
+
+    with pytest.raises(ErroMitre, match="truncado"):
+        MitreAttack(tmp_path / "cache.json").baixar()
+
+    # Nenhum cache invalido pode ficar para tras.
+    assert not (tmp_path / "cache.json").exists()
+
+
+def test_falha_total_preserva_cache_antigo(tmp_path, monkeypatch, sem_espera_mitre):
+    """Dado defasado e melhor que nenhum dado - desde que o usuario saiba."""
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"type": "bundle", "objects": []}), encoding="utf-8")
+    antigo = cache.read_bytes()
+
+    monkeypatch.setattr(
+        "requests.get",
+        lambda *a, **k: (_ for _ in ()).throw(ConnectionResetError("sem rede")),
+    )
+
+    attack = MitreAttack(cache)
+    attack.baixar(forcar=True)
+
+    assert cache.read_bytes() == antigo
+    assert any("possivelmente defasado" in a for a in attack.avisos)
+
+
+def test_falha_total_sem_cache_levanta_erro(tmp_path, monkeypatch, sem_espera_mitre):
+    monkeypatch.setattr(
+        "requests.get",
+        lambda *a, **k: (_ for _ in ()).throw(ConnectionResetError("sem rede")),
+    )
+    with pytest.raises(ErroMitre, match="nao ha cache local"):
+        MitreAttack(tmp_path / "ausente.json").baixar()
+
+
+# ============================================================
+# Taxonomia de taticas
+# ============================================================
+
+
+@pytest.mark.parametrize(
+    "tatica",
+    ["stealth", "defense-evasion", "defense-impairment"],
+)
+def test_taticas_de_evasao_caem_na_instalacao(tatica):
+    """
+    Regressao encontrada com o bundle real: o ATT&CK v19 renomeou
+    "defense-evasion" para "stealth" e separou "defense-impairment".
+    Nenhuma das duas existia no mapa, entao as tecnicas de evasao eram
+    silenciosamente descartadas da Kill Chain quando o STIX real era usado.
+
+    O nome antigo continua aceito: bundle mais velho ainda o emite.
+    """
+    from core.killchain import TATICA_PARA_ESTAGIO
+
+    assert TATICA_PARA_ESTAGIO[tatica] is Estagio.INSTALACAO
+
+    tecnica = TecnicaMapeada("T1027", "Obfuscated Files", [tatica])
+    kc = montar(ResultadoMapeamento(tecnicas=[tecnica]))
+
+    assert tecnica in kc.por_estagio(Estagio.INSTALACAO).tecnicas
+    assert not any("sem estagio correspondente" in a for a in kc.avisos)
+
+
+def test_nome_de_subtecnica_e_composto_com_o_pai(attack):
+    """
+    O STIX guarda so o nome curto ("Web Protocols"). Sozinho ele perde o
+    contexto no relatorio, entao e recomposto como "Pai: Filho".
+    """
+    assert attack.objeto("T1071.001")["name"] == "Web Protocols"  # fidelidade
+
+    tecnica = TecnicaMapeada("T1071.001", "<local>", [])
+    attack.enriquecer(tecnica)
+    assert tecnica.nome == "Application Layer Protocol: Web Protocols"
+
+
+def test_subtecnica_sem_pai_no_bundle_mantem_o_nome_curto(attack):
+    """T1547 nao esta no bundle: nao ha o que compor, e nada pode quebrar."""
+    tecnica = TecnicaMapeada("T1547.001", "<local>", [])
+    attack.enriquecer(tecnica)
+    assert tecnica.nome == "Registry Run Keys / Startup Folder"
+
+
+def test_nome_ja_composto_nao_e_duplicado(attack):
+    """Se o STIX ja traz o nome completo, nao pode virar "Pai: Pai: Filho"."""
+    tecnica = TecnicaMapeada("T1055", "<local>", [])
+    attack.enriquecer(tecnica)
+    assert tecnica.nome == "Process Injection"
+    assert tecnica.nome.count(":") == 0

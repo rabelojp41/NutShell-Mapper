@@ -94,12 +94,19 @@ TATICA_PARA_ESTAGIO: dict[str, Estagio] = {
     # Escalada de privilegio e a continuacao da exploracao: o atacante ja
     # executa codigo e amplia o acesso obtido.
     "privilege-escalation": Estagio.EXPLORACAO,
-    # Evasao de defesa serve para o implante sobreviver no hospedeiro, que
-    # e o proposito do estagio de Instalacao. Empacotamento e ofuscacao
-    # tambem poderiam ser lidos como Armamento, ja que acontecem antes da
-    # entrega, mas neste framework o que se observa e o resultado no
-    # hospedeiro, nao o processo de construcao.
+    # Evasao serve para o implante sobreviver no hospedeiro, que e o
+    # proposito do estagio de Instalacao. Empacotamento e ofuscacao tambem
+    # poderiam ser lidos como Armamento, ja que acontecem antes da entrega,
+    # mas neste framework o que se observa e o resultado no hospedeiro, nao
+    # o processo de construcao.
+    #
+    # O ATT&CK v19 renomeou "defense-evasion" para "stealth" e separou
+    # "defense-impairment" (desativar a defesa, em vez de escapar dela).
+    # As tres constam aqui: o nome antigo ainda aparece em bundle mais
+    # velho e na literatura, e quebrar com ele nao ajudaria ninguem.
+    "stealth": Estagio.INSTALACAO,
     "defense-evasion": Estagio.INSTALACAO,
+    "defense-impairment": Estagio.INSTALACAO,
     # Descoberta e reconhecimento, porem interno: ja houve comprometimento.
     # Fica em Acoes no Objetivo por ser pos-intrusao, e nao no
     # Reconhecimento, que na Kill Chain e explicitamente externo e anterior
@@ -115,7 +122,15 @@ TATICA_PARA_ESTAGIO: dict[str, Estagio] = {
 
 # Taticas para as quais a escolha e discutivel. Registrado no resultado
 # para o analista saber onde a traducao foi editorial.
-TATICAS_AMBIGUAS = frozenset({"discovery", "defense-evasion", "privilege-escalation"})
+TATICAS_AMBIGUAS = frozenset(
+    {
+        "discovery",
+        "stealth",
+        "defense-evasion",
+        "defense-impairment",
+        "privilege-escalation",
+    }
+)
 
 
 # ============================================================

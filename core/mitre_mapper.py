@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -52,6 +53,10 @@ URL_STIX_ENTERPRISE = (
 VALIDADE_DO_CACHE = timedelta(days=30)
 
 CAMINHO_CACHE_PADRAO = Path("data/mitre_cache/enterprise-attack.json")
+
+# Quantas vezes tentar o download antes de desistir. O bundle tem ~45 MB e
+# conexao instavel corta transferencia longa com frequencia.
+TENTATIVAS_DE_DOWNLOAD = 4
 
 # Peso somado minimo para uma tecnica ser reportada. Sem este piso, um unico
 # sinal fraco ja gerava tecnica: GetTickCount (peso 0.2) esta em quase todo
@@ -284,7 +289,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     # ---------- Privilege Escalation / Defense Evasion ----------
     RegraTecnica(
         "T1055", "Process Injection",
-        ("defense-evasion", "privilege-escalation"),
+        ("stealth", "privilege-escalation"),
         (
             _api("WriteProcessMemory", 0.8),
             _api("CreateRemoteThread", 0.9),
@@ -298,7 +303,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1055.012", "Process Injection: Process Hollowing",
-        ("defense-evasion", "privilege-escalation"),
+        ("stealth", "privilege-escalation"),
         (_api("NtUnmapViewOfSection", 0.9), _api("ZwUnmapViewOfSection", 0.9),
          _api("SetThreadContext", 0.5), _api("ResumeThread", 0.3)),
         "Substituicao da imagem de um processo suspenso.",
@@ -306,7 +311,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1055.001", "Process Injection: Dynamic-link Library Injection",
-        ("defense-evasion", "privilege-escalation"),
+        ("stealth", "privilege-escalation"),
         (_api("LoadLibraryA", 0.2), _api("CreateRemoteThread", 0.6),
          _api("VirtualAllocEx", 0.5), _api("GetModuleHandleA", 0.2)),
         "Carga de DLL no espaco de endereco de outro processo.",
@@ -314,7 +319,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1027", "Obfuscated Files or Information",
-        ("defense-evasion",),
+        ("stealth",),
         (
             _pe("alta_entropia", 0.7),
             Sinal(TipoSinal.DESOFUSCADO, "qualquer", 0.6),
@@ -323,7 +328,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1027.002", "Obfuscated Files or Information: Software Packing",
-        ("defense-evasion",),
+        ("stealth",),
         (
             _pe("alta_entropia", 0.6),
             _pe("nome_de_secao_incomum", 0.6),
@@ -336,7 +341,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1140", "Deobfuscate/Decode Files or Information",
-        ("defense-evasion",),
+        ("stealth",),
         (
             Sinal(TipoSinal.DESOFUSCADO, "qualquer", 0.7),
             _api("CryptStringToBinaryA", 0.7),
@@ -346,14 +351,14 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1622", "Debugger Evasion",
-        ("defense-evasion", "discovery"),
+        ("stealth", "discovery"),
         (_api("IsDebuggerPresent", 0.5), _api("CheckRemoteDebuggerPresent", 0.8),
          _api("NtQueryInformationProcess", 0.5), _api("OutputDebugStringA", 0.3)),
         "Verificacao da presenca de depurador.",
     ),
     RegraTecnica(
         "T1497.001", "Virtualization/Sandbox Evasion: System Checks",
-        ("defense-evasion", "discovery"),
+        ("stealth", "discovery"),
         (
             _re(r"\b(vmware|virtualbox|vbox|qemu|xen|sandboxie|cuckoo)\b", 0.8),
             _str("SbieDll.dll", 0.9),
@@ -364,7 +369,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1070.004", "Indicator Removal: File Deletion",
-        ("defense-evasion",),
+        ("stealth",),
         (_api("DeleteFileA", 0.4), _api("DeleteFileW", 0.4),
          _api("SHFileOperationW", 0.5), _re(r"del\s+/f\s+/q", 0.7)),
         "Remocao de arquivos para apagar rastro.",
@@ -372,19 +377,19 @@ CATALOGO: tuple[RegraTecnica, ...] = (
     ),
     RegraTecnica(
         "T1218.011", "System Binary Proxy Execution: Rundll32",
-        ("defense-evasion",),
+        ("stealth",),
         (_str("rundll32", 0.8),),
         "Execucao de codigo atraves do rundll32.exe.",
     ),
     RegraTecnica(
         "T1218.010", "System Binary Proxy Execution: Regsvr32",
-        ("defense-evasion",),
+        ("stealth",),
         (_str("regsvr32", 0.8), _re(r"/i:.*scrobj\.dll", 0.9)),
         "Execucao de codigo atraves do regsvr32.exe.",
     ),
     RegraTecnica(
         "T1112", "Modify Registry",
-        ("defense-evasion",),
+        ("defense-impairment", "persistence"),
         (_api("RegSetValueExA", 0.5), _api("RegSetValueExW", 0.5),
          _api("RegCreateKeyExA", 0.4), _api("RegDeleteValueA", 0.5)),
         "Alteracao de chaves do registro.",
@@ -862,30 +867,11 @@ class MitreAttack:
             logger.debug("cache do ATT&CK valido: %s", self.caminho_cache)
             return self.caminho_cache
 
-        import requests
-
-        logger.info("baixando o bundle STIX do ATT&CK (~45 MB)...")
         self.caminho_cache.parent.mkdir(parents=True, exist_ok=True)
         temporario = self.caminho_cache.with_suffix(".parcial")
 
         try:
-            resposta = requests.get(URL_STIX_ENTERPRISE, timeout=timeout, stream=True)
-            resposta.raise_for_status()
-
-            # Grava num arquivo temporario e so entao substitui: uma queda
-            # no meio do download deixaria um cache corrompido que falharia
-            # de forma confusa na proxima execucao.
-            with temporario.open("wb") as destino:
-                for bloco in resposta.iter_content(chunk_size=1 << 16):
-                    destino.write(bloco)
-
-            temporario.replace(self.caminho_cache)
-            logger.info(
-                "bundle salvo em %s (%.1f MB)",
-                self.caminho_cache,
-                self.caminho_cache.stat().st_size / 1024 / 1024,
-            )
-
+            self._baixar_com_retomada(temporario, timeout)
         except Exception as erro:  # rede, DNS, HTTP, disco
             temporario.unlink(missing_ok=True)
 
@@ -901,7 +887,104 @@ class MitreAttack:
                 f"falha ao baixar o bundle STIX e nao ha cache local: {erro}"
             ) from erro
 
+        # Grava num temporario e so entao substitui: uma queda no meio
+        # deixaria um cache corrompido que falharia de forma confusa na
+        # execucao seguinte.
+        temporario.replace(self.caminho_cache)
+        logger.info(
+            "bundle salvo em %s (%.1f MB)",
+            self.caminho_cache,
+            self.caminho_cache.stat().st_size / 1024 / 1024,
+        )
         return self.caminho_cache
+
+    def _baixar_com_retomada(self, temporario: Path, timeout: int) -> None:
+        """
+        Baixa o bundle, retomando de onde parou a cada tentativa.
+
+        O arquivo tem cerca de 45 MB e conexao instavel corta transferencia
+        longa com frequencia - foi o que aconteceu em teste real. Recomecar
+        do zero a cada queda pode nunca terminar, entao cada tentativa envia
+        um cabecalho Range pedindo apenas o que falta.
+
+        Se o servidor ignorar o Range (responde 200 em vez de 206), o
+        arquivo parcial e descartado e a tentativa recomeca do inicio - do
+        contrario o conteudo ficaria duplicado.
+        """
+        import requests
+
+        erro_final: Exception | None = None
+        espera = 2.0
+
+        for tentativa in range(1, TENTATIVAS_DE_DOWNLOAD + 1):
+            ja_baixado = temporario.stat().st_size if temporario.exists() else 0
+            cabecalhos = {"Range": f"bytes={ja_baixado}-"} if ja_baixado else {}
+
+            logger.info(
+                "baixando o bundle STIX do ATT&CK (~45 MB), tentativa %d/%d%s",
+                tentativa,
+                TENTATIVAS_DE_DOWNLOAD,
+                f" — retomando de {ja_baixado / 1024 / 1024:.1f} MB" if ja_baixado else "",
+            )
+
+            try:
+                resposta = requests.get(
+                    URL_STIX_ENTERPRISE,
+                    timeout=timeout,
+                    stream=True,
+                    headers=cabecalhos,
+                )
+                resposta.raise_for_status()
+
+                # 206 = o servidor honrou o Range. Qualquer outro codigo com
+                # Range enviado significa que ele vai mandar o arquivo
+                # inteiro, e o que ja temos precisa ser descartado.
+                modo = "ab"
+                if ja_baixado and resposta.status_code != 206:
+                    logger.debug("servidor ignorou o Range; recomecando do inicio")
+                    modo = "wb"
+
+                with temporario.open(modo) as destino:
+                    for bloco in resposta.iter_content(chunk_size=1 << 16):
+                        destino.write(bloco)
+
+            except Exception as erro:
+                erro_final = erro
+                logger.warning(
+                    "tentativa %d/%d falhou: %s",
+                    tentativa, TENTATIVAS_DE_DOWNLOAD, erro,
+                )
+                if tentativa < TENTATIVAS_DE_DOWNLOAD:
+                    time.sleep(espera)
+                    espera *= 2
+                continue
+
+            # Download concluido sem excecao: confirma que o JSON esta
+            # inteiro. Uma queda pode encerrar o stream sem erro, e um
+            # arquivo truncado so falharia depois, na carga.
+            if self._json_completo(temporario):
+                return
+
+            erro_final = ErroMitre("o arquivo baixado esta truncado")
+            logger.warning("arquivo truncado na tentativa %d; retomando", tentativa)
+
+        raise erro_final or ErroMitre("falha desconhecida no download")
+
+    @staticmethod
+    def _json_completo(caminho: Path) -> bool:
+        """
+        Verifica se o arquivo termina como um JSON completo.
+
+        Le so o final: carregar 45 MB apenas para descobrir que o download
+        foi cortado seria desperdicio. Um bundle valido termina com "}",
+        possivelmente seguido de espaco em branco.
+        """
+        try:
+            with caminho.open("rb") as arquivo:
+                arquivo.seek(max(0, caminho.stat().st_size - 64))
+                return arquivo.read().rstrip().endswith(b"}")
+        except OSError:
+            return False
 
     # --- Carga ---
 
@@ -978,7 +1061,18 @@ class MitreAttack:
             return tecnica
 
         tecnica.confirmada_no_stix = True
-        tecnica.nome = obj.get("name", tecnica.nome)
+
+        # O STIX guarda o nome curto da sub-tecnica ("Regsvr32"), sem o da
+        # tecnica-pai. Sozinho ele perde o contexto no relatorio, entao o
+        # nome e recomposto como "Pai: Filho", que e a forma usada no site
+        # do ATT&CK.
+        nome = obj.get("name", tecnica.nome)
+        if nome and tecnica.e_subtecnica:
+            pai = self.objeto(tecnica.tecnica_pai)
+            nome_do_pai = (pai or {}).get("name", "")
+            if nome_do_pai and not nome.startswith(nome_do_pai):
+                nome = f"{nome_do_pai}: {nome}"
+        tecnica.nome = nome
 
         taticas = [
             fase.get("phase_name", "")

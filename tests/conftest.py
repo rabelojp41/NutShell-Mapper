@@ -1,18 +1,38 @@
 """
 Fixtures compartilhadas dos testes.
 
-A principal e o bundle STIX sintetico: o bundle real do ATT&CK tem ~45 MB e
+A principal e o bundle STIX sintetico: o bundle real do ATT&CK tem ~50 MB e
 exige rede, o que tornaria os testes lentos, frageis e dependentes de estar
 online. O sintetico reproduz a estrutura que o mitre_mapper realmente
 consome - external_references, kill_chain_phases, intrusion-set e
 relationship "uses" - com objetos suficientes para exercitar o codigo.
+
+Ele imita o bundle real tambem nos detalhes que ja causaram bug:
+
+  - Sub-tecnica tem o nome CURTO ("Web Protocols"), sem o da tecnica-pai,
+    e a tecnica-pai existe como objeto separado. E assim no STIX de
+    verdade, e foi o que fez o nome da sub-tecnica perder contexto no
+    relatorio.
+  - A tatica de evasao se chama "stealth", como no ATT&CK v19, e nao
+    "defense-evasion". Quando o sintetico usava o nome antigo, o mapa da
+    Kill Chain parecia correto nos testes e descartava silenciosamente as
+    tecnicas de evasao com o bundle real.
+
+Um duble que nao imita a fonte da falsa confianca em vez de cobertura.
 """
 
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
+
+# O Qt precisa saber que nao ha tela ANTES de ser importado. Definir aqui,
+# no conftest, faz valer para a suite inteira: sem isso os testes da
+# interface abririam janelas de verdade, roubando o foco de quem esta
+# trabalhando, e quebrariam em CI, que nao tem servidor grafico.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 def _tecnica(attack_id: str, nome: str, taticas: list[str], stix_id: str) -> dict:
@@ -61,6 +81,7 @@ def _usa(origem: str, alvo: str) -> dict:
 
 # IDs STIX estaveis, para as relacoes poderem referencia-los.
 AP_T1055 = "attack-pattern--0001"
+AP_T1071 = "attack-pattern--0007"  # pai de T1071.001
 AP_T1071_001 = "attack-pattern--0002"
 AP_T1486 = "attack-pattern--0003"
 AP_T1547_001 = "attack-pattern--0004"
@@ -86,16 +107,20 @@ def bundle_stix() -> dict:
                 "x_mitre_version": "99.0",
             },
             _tecnica("T1055", "Process Injection",
-                     ["defense-evasion", "privilege-escalation"], AP_T1055),
-            _tecnica("T1071.001", "Application Layer Protocol: Web Protocols",
+                     ["stealth", "privilege-escalation"], AP_T1055),
+            # A tecnica-pai existe como objeto proprio, e a sub-tecnica traz
+            # apenas o nome curto - exatamente como no bundle real.
+            _tecnica("T1071", "Application Layer Protocol",
+                     ["command-and-control"], AP_T1071),
+            _tecnica("T1071.001", "Web Protocols",
                      ["command-and-control"], AP_T1071_001),
             _tecnica("T1486", "Data Encrypted for Impact", ["impact"], AP_T1486),
-            _tecnica("T1547.001", "Boot or Logon Autostart Execution: Registry Run Keys",
+            _tecnica("T1547.001", "Registry Run Keys / Startup Folder",
                      ["persistence", "privilege-escalation"], AP_T1547_001),
             _tecnica("T1057", "Process Discovery", ["discovery"], AP_T1057),
             # Tecnica marcada como descontinuada, para exercitar esse caminho.
             {
-                **_tecnica("T1099", "Timestomp", ["defense-evasion"], AP_DESCONTINUADA),
+                **_tecnica("T1099", "Timestomp", ["stealth"], AP_DESCONTINUADA),
                 "x_mitre_deprecated": True,
             },
             _grupo("G0016", "APT29", ["APT29", "Cozy Bear", "Nobelium"], IS_G0016),
