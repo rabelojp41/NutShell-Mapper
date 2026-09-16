@@ -1,4 +1,4 @@
-# cti-framework
+# RabMapper
 
 Framework de **Cyber Threat Intelligence** em Python para analise estatica de
 artefatos suspeitos: extracao de strings, desofuscacao, geracao de regras YARA,
@@ -42,8 +42,8 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 ## Instalacao
 
 ```bash
-git clone https://github.com/<usuario>/cti-framework.git
-cd cti-framework
+git clone https://github.com/rabelojp41/RabMapper.git
+cd RabMapper
 python -m venv .venv
 .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
