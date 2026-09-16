@@ -1,0 +1,73 @@
+# ===== Segredos =====
+.env
+config/.env
+*.key
+*.pem
+
+# ===== Amostras de malware: NUNCA subir binario real =====
+data/samples/*
+!data/samples/.gitkeep
+!data/samples/README.md
+*.exe
+*.dll
+*.bin
+*.sys
+*.vir
+*.malware
+*.zip
+*.7z
+*.rar
+
+# ===== Saidas geradas =====
+output/
+reports/generated/
+*.yar.tmp
+*.pdf
+*.docx
+!docs/**/*.pdf
+
+# ===== Cache do MITRE ATT&CK (STIX e grande) =====
+data/mitre_cache/
+*.json.gz
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== Ambientes virtuais =====
+.venv/
+venv/
+ENV/
+env/
+
+# ===== Testes / coverage =====
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ===== IDE / SO =====
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
