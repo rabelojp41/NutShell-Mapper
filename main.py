@@ -517,7 +517,81 @@ def construir_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _verificar_interpretador() -> int:
+    """
+    Confere que as dependencias estao disponiveis antes de qualquer import.
+
+    O erro mais comum de quem clona o projeto e rodar `python main.py` com o
+    interpretador do sistema em vez do ambiente virtual. O sintoma e um
+    ModuleNotFoundError cru, que nao diz o que fazer - e nem sempre o
+    modulo faltando e obvio o suficiente para a pessoa ligar uma coisa a
+    outra.
+
+    Returns:
+        0 quando esta tudo certo, ou um codigo de erro apos explicar.
+    """
+    raiz = Path(__file__).resolve().parent
+
+    try:
+        import dotenv  # noqa: F401  (so serve de sentinela)
+    except ImportError:
+        pass
+    else:
+        # Dependencias presentes; so avisa se a versao estiver fora da faixa.
+        if sys.version_info[:2] != (3, 10):
+            print(
+                f"aviso: rodando em Python {sys.version_info.major}."
+                f"{sys.version_info.minor}; o projeto e testado em 3.10.\n",
+                file=sys.stderr,
+            )
+        return 0
+
+    # --- Dependencias ausentes: descobrir o porque e dizer o que fazer ---
+    nome = "python.exe" if sys.platform == "win32" else "python"
+    venv = raiz / ".venv" / ("Scripts" if sys.platform == "win32" else "bin") / nome
+
+    print(
+        "erro: as dependencias do RabMapper nao estao disponiveis neste "
+        "interpretador.\n",
+        file=sys.stderr,
+    )
+    print(f"  Interpretador em uso : {sys.executable}", file=sys.stderr)
+    print(
+        f"  Versao               : {sys.version_info.major}."
+        f"{sys.version_info.minor}.{sys.version_info.micro}\n",
+        file=sys.stderr,
+    )
+
+    if venv.exists():
+        print(
+            "  O ambiente virtual do projeto existe, mas nao e o que esta "
+            "rodando.\n"
+            "  Use um dos dois:\n\n"
+            f"    {venv} main.py ...\n\n"
+            "  ou ative o ambiente antes:\n\n"
+            f"    {raiz / '.venv' / 'Scripts' / 'activate'}\n",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "  O ambiente virtual ainda nao foi criado. O projeto exige "
+            "Python 3.10\n"
+            "  (o flare-floss depende de binary2strings, que so tem wheel "
+            "cp310 no Windows):\n\n"
+            "    py -3.10 -m venv .venv\n"
+            "    .venv\\Scripts\\activate\n"
+            "    pip install -r requirements.txt\n",
+            file=sys.stderr,
+        )
+
+    return 3
+
+
 def main(argv: list[str] | None = None) -> int:
+    codigo = _verificar_interpretador()
+    if codigo:
+        return codigo
+
     args = construir_parser().parse_args(argv)
 
     from config.settings import configurar_logging

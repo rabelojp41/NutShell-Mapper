@@ -32,12 +32,60 @@ from PySide6.QtWidgets import (
 
 from core.string_extractor import Confianca
 
-# Cores por confianca, usadas de forma consistente em todas as abas.
-COR_CONFIANCA = {
-    Confianca.ALTA: QColor("#c0392b"),
-    Confianca.MEDIA: QColor("#b9770e"),
-    Confianca.BAIXA: QColor("#707b7c"),
+# ============================================================
+# Cores
+#
+# O Windows pode estar em tema claro ou escuro, e o Qt herda essa escolha.
+# Cor fixa clara num tema escuro fica ilegivel, e vice-versa - o vermelho
+# #c0392b, por exemplo, quase some sobre fundo preto. Entao as cores sao
+# escolhidas na hora de montar o widget, a partir do tema em vigor.
+# ============================================================
+
+
+def tema_escuro() -> bool:
+    """Descobre se a aplicacao esta em tema escuro, pela paleta do sistema."""
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return False
+    return app.palette().color(QPalette.Window).lightness() < 128
+
+
+# Confianca: tons mais vivos no escuro, mais fechados no claro.
+_CONFIANCA_CLARO = {
+    Confianca.ALTA: "#c0392b",
+    Confianca.MEDIA: "#b9770e",
+    Confianca.BAIXA: "#707b7c",
 }
+_CONFIANCA_ESCURO = {
+    Confianca.ALTA: "#ff7b72",
+    Confianca.MEDIA: "#e3b341",
+    Confianca.BAIXA: "#9aa0a6",
+}
+
+
+def cor_confianca(confianca: Confianca) -> QColor:
+    """Cor da confianca, adequada ao tema em vigor."""
+    tabela = _CONFIANCA_ESCURO if tema_escuro() else _CONFIANCA_CLARO
+    return QColor(tabela[confianca])
+
+
+def cor_secundaria() -> str:
+    """Cinza de texto secundario que funciona nos dois temas."""
+    return "#9aa0a6" if tema_escuro() else "#5f6368"
+
+
+def fundo_de_nota() -> str:
+    """
+    Fundo das caixas de ressalva.
+
+    Cinza translucido em vez de cor fixa: escurece um fundo claro e clareia
+    um fundo escuro, sem precisar de duas paletas.
+    """
+    return "rgba(128, 128, 128, 0.18)"
+
 
 FONTE_MONO = "Consolas, 'Courier New', monospace"
 
@@ -63,8 +111,8 @@ def _nota(texto: str) -> QLabel:
     rotulo = QLabel(texto)
     rotulo.setWordWrap(True)
     rotulo.setStyleSheet(
-        "QLabel { color: #5f6368; background: #f1f3f4; border-left: 3px solid #9aa0a6;"
-        " padding: 6px 8px; }"
+        f"QLabel {{ color: {cor_secundaria()}; background: {fundo_de_nota()};"
+        f" border-left: 3px solid #9aa0a6; padding: 6px 8px; }}"
     )
     return rotulo
 
@@ -108,9 +156,9 @@ def _colorir_por_confianca(tabela: QTableWidget, coluna: int) -> None:
         item = tabela.item(i, coluna)
         if item is None:
             continue
-        for confianca, cor in COR_CONFIANCA.items():
+        for confianca in Confianca:
             if item.text() == confianca.value:
-                item.setForeground(cor)
+                item.setForeground(cor_confianca(confianca))
                 fonte = item.font()
                 fonte.setBold(confianca is Confianca.ALTA)
                 item.setFont(fonte)
@@ -120,7 +168,7 @@ def _colorir_por_confianca(tabela: QTableWidget, coluna: int) -> None:
 def _vazio(mensagem: str) -> QWidget:
     rotulo = QLabel(mensagem)
     rotulo.setAlignment(Qt.AlignCenter)
-    rotulo.setStyleSheet("QLabel { color: #5f6368; padding: 24px; }")
+    rotulo.setStyleSheet(f"QLabel {{ color: {cor_secundaria()}; padding: 24px; }}")
     return _pagina(rotulo)
 
 
@@ -322,7 +370,7 @@ def aba_mitre(r) -> QWidget:
             arvore,
             [f"{t.tecnica_id}  {t.nome}", t.confianca.value, ", ".join(t.taticas)],
         )
-        no.setForeground(1, COR_CONFIANCA[t.confianca])
+        no.setForeground(1, cor_confianca(t.confianca))
 
         if t.descricao:
             QTreeWidgetItem(no, [t.descricao, "", ""])
@@ -373,7 +421,7 @@ def aba_killchain(r) -> QWidget:
         no = QTreeWidgetItem(arvore, [rotulo, f"{len(estagio.tecnicas)} tecnica(s)"])
         for t in estagio.tecnicas:
             filho = QTreeWidgetItem(no, [f"{t.tecnica_id}  {t.nome}", t.confianca.value])
-            filho.setForeground(1, COR_CONFIANCA[t.confianca])
+            filho.setForeground(1, cor_confianca(t.confianca))
         no.setExpanded(True)
 
     arvore.resizeColumnToContents(0)
@@ -580,7 +628,7 @@ ABAS = (
     ("Strings", aba_strings),
     ("Desofuscacao", aba_desofuscacao),
     ("PE", aba_pe),
-    ("ATT&CK", aba_mitre),
+    ("ATT&&CK", aba_mitre),
     ("Kill Chain", aba_killchain),
     ("Atribuicao", aba_atribuicao),
     ("YARA", aba_yara),

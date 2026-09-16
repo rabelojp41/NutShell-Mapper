@@ -387,3 +387,86 @@ def test_download_cancelado_nao_cria_cliente(aplicacao, monkeypatch):
         janela._baixar_amostra()
     finally:
         janela.close()
+
+
+# ============================================================
+# Apresentacao: bugs que so apareceram rodando numa tela
+# ============================================================
+
+
+def test_e_comercial_nao_e_engolido_pelo_mnemonico(aplicacao):
+    """
+    Regressao: o Qt trata "&" como atalho de teclado em widget com
+    mnemonico, entao "ATT&CK" era exibido como "ATTCK" com o C sublinhado.
+    O texto precisa escapar o "&" duplicando-o.
+    """
+    from gui.app import JanelaPrincipal
+
+    janela = JanelaPrincipal()
+    try:
+        # O texto cru guarda "&&"; o Qt exibe "&".
+        assert "ATT&&CK" in janela.usar_stix.text()
+
+        acoes = [
+            a.text()
+            for menu in janela.menuBar().findChildren(type(janela.menuBar()))
+            for a in menu.actions()
+        ]
+        acoes += [a.text() for a in janela.menuBar().actions()]
+        for texto in acoes:
+            if "ATT" in texto and "CK" in texto:
+                assert "&&" in texto, f"mnemonico nao escapado: {texto!r}"
+    finally:
+        janela.close()
+
+
+def test_titulo_da_aba_escapa_o_e_comercial():
+    """Titulo de aba tambem passa pelo processamento de mnemonico."""
+    titulos = [t for t, _ in views.ABAS]
+    for titulo in titulos:
+        if "ATT" in titulo:
+            assert titulo == "ATT&&CK"
+
+
+def test_painel_de_opcoes_e_rolavel(aplicacao):
+    """
+    Regressao: o painel e mais alto do que cabe numa tela de notebook, e
+    sem area rolavel os controles de baixo sumiam sem nenhum indicio.
+    """
+    from PySide6.QtWidgets import QScrollArea
+
+    from gui.app import JanelaPrincipal
+
+    janela = JanelaPrincipal()
+    try:
+        rolagens = janela.findChildren(QScrollArea)
+        assert rolagens, "o painel de opcoes precisa estar numa area rolavel"
+        assert rolagens[0].widgetResizable() is True
+    finally:
+        janela.close()
+
+
+def test_cores_seguem_o_tema(aplicacao, monkeypatch):
+    """
+    Cor fixa clara some no tema escuro do Windows, e vice-versa. O
+    vermelho #c0392b, por exemplo, quase desaparece sobre preto.
+    """
+    from core.string_extractor import Confianca
+
+    monkeypatch.setattr(views, "tema_escuro", lambda: False)
+    claro = views.cor_confianca(Confianca.ALTA)
+    cinza_claro = views.cor_secundaria()
+
+    monkeypatch.setattr(views, "tema_escuro", lambda: True)
+    escuro = views.cor_confianca(Confianca.ALTA)
+    cinza_escuro = views.cor_secundaria()
+
+    assert claro != escuro
+    assert cinza_claro != cinza_escuro
+    # No escuro o texto precisa ser mais claro para ter contraste.
+    assert escuro.lightness() > claro.lightness()
+
+
+def test_fundo_de_nota_e_translucido():
+    """Cinza translucido escurece fundo claro e clareia fundo escuro."""
+    assert views.fundo_de_nota().startswith("rgba(")

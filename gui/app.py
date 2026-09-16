@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QSplitter,
     QTabWidget,
@@ -51,6 +52,13 @@ from gui.views import ABAS
 from gui.worker import ExecutorDeAnalise
 
 logger = logging.getLogger(__name__)
+
+
+def _cinza() -> str:
+    """Cinza de texto secundario adequado ao tema em vigor."""
+    from gui.views import cor_secundaria
+
+    return cor_secundaria()
 
 
 class AreaDeArquivo(QLabel):
@@ -120,7 +128,17 @@ class JanelaPrincipal(QMainWindow):
 
     def _montar(self) -> None:
         divisor = QSplitter(Qt.Horizontal)
-        divisor.addWidget(self._painel_esquerdo())
+
+        # O painel de opcoes e mais alto do que cabe numa tela de notebook.
+        # Sem area rolavel, os controles de baixo - exportar relatorio,
+        # salvar YARA - simplesmente somem, sem nenhum indicio de que
+        # existem.
+        rolagem = QScrollArea()
+        rolagem.setWidget(self._painel_esquerdo())
+        rolagem.setWidgetResizable(True)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        rolagem.setMinimumWidth(320)
+        divisor.addWidget(rolagem)
 
         self.abas = QTabWidget()
         self.abas.addTab(
@@ -140,7 +158,7 @@ class JanelaPrincipal(QMainWindow):
             "<h2>RabMapper</h2>"
             "<p>Analise estatica de artefatos e threat intelligence.</p>"
             "<p>Selecione um arquivo a esquerda e clique em <b>Analisar</b>.</p>"
-            "<p style='color:#5f6368'>O artefato nao e executado. Ainda assim, "
+            f"<p style='color:{_cinza()}'>O artefato nao e executado. Ainda assim, "
             "manipule amostras reais apenas em maquina virtual isolada.</p>"
         )
         rotulo.setAlignment(Qt.AlignCenter)
@@ -182,7 +200,7 @@ class JanelaPrincipal(QMainWindow):
         self.gerar_yara.setChecked(True)
         formulario.addRow(self.gerar_yara)
 
-        self.usar_stix = QCheckBox("Usar o STIX oficial do ATT&CK")
+        self.usar_stix = QCheckBox("Usar o STIX oficial do ATT&&CK")
         self.usar_stix.setChecked(True)
         self.usar_stix.setToolTip(
             "Baixa o bundle oficial (~45 MB) na primeira vez.\n"
@@ -229,7 +247,9 @@ class JanelaPrincipal(QMainWindow):
 
         self.rotulo_chaves = QLabel()
         self.rotulo_chaves.setWordWrap(True)
-        self.rotulo_chaves.setStyleSheet("QLabel { color: #5f6368; font-size: 11px; }")
+        self.rotulo_chaves.setStyleSheet(
+            f"QLabel {{ color: {_cinza()}; font-size: 11px; }}"
+        )
         layout_rede.addWidget(self.rotulo_chaves)
         self._atualizar_rotulo_de_chaves()
 
@@ -265,8 +285,11 @@ class JanelaPrincipal(QMainWindow):
             "isolado."
         )
         self.rotulo_bazaar.setWordWrap(True)
+        from gui.views import tema_escuro
+
         self.rotulo_bazaar.setStyleSheet(
-            "QLabel { color: #b3261e; font-size: 11px; }"
+            "QLabel { color: %s; font-size: 11px; }"
+            % ("#ff7b72" if tema_escuro() else "#b3261e")
         )
         layout_bazaar.addWidget(self.rotulo_bazaar)
 
@@ -291,7 +314,9 @@ class JanelaPrincipal(QMainWindow):
 
         self.rotulo_etapa = QLabel("")
         self.rotulo_etapa.setWordWrap(True)
-        self.rotulo_etapa.setStyleSheet("QLabel { color: #5f6368; font-size: 11px; }")
+        self.rotulo_etapa.setStyleSheet(
+            f"QLabel {{ color: {_cinza()}; font-size: 11px; }}"
+        )
         layout.addWidget(self.rotulo_etapa)
 
         # --- Exportacao ---
@@ -336,7 +361,7 @@ class JanelaPrincipal(QMainWindow):
 
         ferramentas = self.menuBar().addMenu("&Ferramentas")
 
-        acao = QAction("Atualizar o MITRE ATT&CK", self)
+        acao = QAction("Atualizar o MITRE ATT&&CK", self)
         acao.triggered.connect(self._atualizar_attack)
         ferramentas.addAction(acao)
 
