@@ -191,6 +191,15 @@ class JanelaPrincipal(QMainWindow):
         )
         formulario.addRow(self.usar_stix)
 
+        self.formato = QComboBox()
+        self.formato.addItems(["auto", "pe", "sc32", "sc64"])
+        self.formato.setToolTip(
+            "auto: detecta PE pelo cabecalho; artefato sem cabecalho e "
+            "tentado como shellcode de 32 e de 64 bits. "
+            "Use sc32/sc64 para forcar a arquitetura de um shellcode."
+        )
+        formulario.addRow("Formato:", self.formato)
+
         self.min_string = QSpinBox()
         self.min_string.setRange(3, 64)
         self.min_string.setValue(4)
@@ -252,9 +261,9 @@ class JanelaPrincipal(QMainWindow):
         grupo_saida = QGroupBox("Relatorio")
         layout_saida = QVBoxLayout(grupo_saida)
 
-        self.formato = QComboBox()
-        self.formato.addItems(["md", "json", "pdf", "docx"])
-        layout_saida.addWidget(self.formato)
+        self.formato_de_saida = QComboBox()
+        self.formato_de_saida.addItems(["md", "json", "pdf", "docx"])
+        layout_saida.addWidget(self.formato_de_saida)
 
         self.botao_exportar = QPushButton("Exportar relatorio...")
         self.botao_exportar.clicked.connect(self._exportar_relatorio)
@@ -388,6 +397,7 @@ class JanelaPrincipal(QMainWindow):
 
         opcoes = OpcoesAnalise(
             usar_floss=self.usar_floss.isChecked(),
+            formato=self.formato.currentText(),
             tamanho_minimo_de_string=self.min_string.value(),
             gerar_yara=self.gerar_yara.isChecked(),
             usar_stix=self.usar_stix.isChecked(),
@@ -461,7 +471,7 @@ class JanelaPrincipal(QMainWindow):
         if self._resultado is None:
             return
 
-        formato = self.formato.currentText()
+        formato = self.formato_de_saida.currentText()
         sugestao = (
             f"{Path(self._resultado.caminho).stem}_"
             f"{self._resultado.sha256[:8]}.{formato}"

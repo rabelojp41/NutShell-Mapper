@@ -298,3 +298,30 @@ def test_aba_que_quebra_nao_derruba_as_outras(aplicacao, resultado, monkeypatch)
         assert "Resumo" in titulos
     finally:
         janela.close()
+
+
+def test_janela_expoe_o_formato_do_artefato(aplicacao):
+    """
+    O suporte a shellcode so serve se a interface deixar escolher. Sao dois
+    combos diferentes na janela - formato do artefato e formato do
+    relatorio - e trocar um pelo outro passaria despercebido.
+    """
+    from gui.app import JanelaPrincipal
+
+    janela = JanelaPrincipal()
+    try:
+        opcoes_de_entrada = [
+            janela.formato.itemText(i) for i in range(janela.formato.count())
+        ]
+        assert opcoes_de_entrada == ["auto", "pe", "sc32", "sc64"]
+
+        opcoes_de_saida = [
+            janela.formato_de_saida.itemText(i)
+            for i in range(janela.formato_de_saida.count())
+        ]
+        assert opcoes_de_saida == ["md", "json", "pdf", "docx"]
+
+        janela.formato.setCurrentText("sc64")
+        assert janela.formato.currentText() == "sc64"
+    finally:
+        janela.close()
