@@ -57,6 +57,7 @@ class Estagio(str, Enum):
     CVSS = "Score CVSS"
     VIRUSTOTAL = "Consulta ao VirusTotal"
     SHODAN = "Consulta ao Shodan"
+    MALWAREBAZAAR = "Consulta ao MalwareBazaar"
     CONCLUIDO = "Concluido"
 
 
@@ -143,6 +144,10 @@ class ResultadoAnalise:
     cvss: cvss_calculator.ResultadoCVSS | None = None
     virustotal: list = field(default_factory=list)
     shodan: list = field(default_factory=list)
+    # ResultadoMalwareBazaar, quando a consulta ocorre. O tipo nao e
+    # importado para core/ nao depender de enrichment/, que so entra em
+    # cena quando o enriquecimento e pedido.
+    malwarebazaar: object | None = None
 
     erros: list[ErroDeEstagio] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
@@ -231,6 +236,9 @@ class ResultadoAnalise:
 
         saida["virustotal"] = [r.to_dict() for r in self.virustotal]
         saida["shodan"] = [r.to_dict() for r in self.shodan]
+        saida["malwarebazaar"] = (
+            self.malwarebazaar.to_dict() if self.malwarebazaar else None
+        )
         return saida
 
 
@@ -329,7 +337,13 @@ def analisar(
 
     # O total serve so para a barra de progresso; nao precisa ser exato.
     total = 6 + sum(
-        (opcoes.gerar_yara, bool(opcoes.vetor_cvss), opcoes.enriquecer, opcoes.enriquecer)
+        (
+            opcoes.gerar_yara,
+            bool(opcoes.vetor_cvss),
+            opcoes.enriquecer,
+            opcoes.enriquecer,
+            opcoes.enriquecer,
+        )
     )
     executor = _Executor(resultado, progresso, cancelado, total)
 
@@ -475,7 +489,7 @@ def _enriquecer(
     dependencias de rede carregadas, e para deixar claro que a rede so
     entra quando o enriquecimento e pedido.
     """
-    from enrichment import shodan_client, virustotal_client
+    from enrichment import malwarebazaar_client, shodan_client, virustotal_client
 
     if config is None:
         from config.settings import CONFIG as config
@@ -517,3 +531,21 @@ def _enriquecer(
             return cliente.consultar_iocs(iocs, maximo=opcoes.maximo_de_consultas)
 
     resultado.shodan = executor.rodar(Estagio.SHODAN, shodan) or []
+
+    # --- MalwareBazaar ---
+
+    def bazaar():
+        cliente = malwarebazaar_client.criar(config)
+        if cliente is None:
+            resultado.avisos.append(
+                "MalwareBazaar pulado: Auth-Key nao configurada ou "
+                "enriquecimento desabilitado no .env"
+            )
+            return None
+
+        with cliente:
+            # So consulta por hash. Baixar amostra e acao separada e
+            # deliberada, nunca efeito colateral de analisar um arquivo.
+            return cliente.consultar_hash(resultado.extracao.sha256)
+
+    resultado.malwarebazaar = executor.rodar(Estagio.MALWAREBAZAAR, bazaar)

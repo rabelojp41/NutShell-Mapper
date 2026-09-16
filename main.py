@@ -278,6 +278,106 @@ def comando_atualizar_attack(args: argparse.Namespace) -> int:
     return 0
 
 
+def comando_bazaar(args: argparse.Namespace) -> int:
+    """Consulta um hash no MalwareBazaar e, opcionalmente, baixa a amostra."""
+    from config.settings import CONFIG
+    from enrichment import malwarebazaar_client
+    from enrichment.malwarebazaar_client import ErroMalwareBazaar
+
+    cliente = malwarebazaar_client.criar(CONFIG)
+    if cliente is None:
+        print(
+            "erro: Auth-Key do MalwareBazaar nao configurada, ou "
+            "enriquecimento desabilitado no .env.\n"
+            "A chave e obtida em auth.abuse.ch e vale para todos os servicos "
+            "do abuse.ch.",
+            file=sys.stderr,
+        )
+        return 1
+
+    with cliente:
+        _titulo(f"MalwareBazaar — {args.hash[:24]}")
+        resultado = cliente.consultar_hash(args.hash)
+
+        if resultado.erro:
+            print(f"erro: {resultado.erro}", file=sys.stderr)
+            return 1
+
+        if not resultado.encontrado:
+            print(f"  {resultado.resumo}")
+            for o in resultado.observacoes:
+                print(f"  obs: {o}")
+            return 0
+
+        print(f"  Familia      : {resultado.familia or '-'}")
+        print(f"  Tags         : {', '.join(resultado.tags) or '-'}")
+        print(f"  Tipo         : {resultado.tipo} {resultado.formato} "
+              f"{resultado.arquitetura}".rstrip())
+        print(f"  Tamanho      : {resultado.tamanho_bytes:,} bytes")
+        print(f"  Entrega      : {resultado.metodo_de_entrega or '-'}")
+        print(f"  Visto em     : {resultado.primeira_vez_visto} por "
+              f"{resultado.reportado_por} ({resultado.pais_de_origem})")
+        print(f"  SHA256       : {resultado.sha256}")
+        print(f"  MD5          : {resultado.md5}")
+        print(f"  Senha do ZIP : {resultado.senha_do_arquivo}")
+
+        if resultado.regras_yara:
+            _secao(f"Regras YARA da comunidade ({len(resultado.regras_yara)})")
+            for nome in resultado.regras_yara[:10]:
+                print(f"  - {nome}")
+
+        if resultado.fontes_externas:
+            _secao("Analises em outros servicos")
+            print("  " + ", ".join(resultado.fontes_externas))
+
+        for o in resultado.observacoes:
+            print(f"\n  obs: {o}")
+
+        if not args.baixar:
+            print()
+            return 0
+
+        # --- Download ---
+        _secao("Download da amostra")
+        print(
+            "  ATENCAO: isto traz malware para esta maquina.\n"
+            "  O arquivo sera gravado como ZIP cifrado, sem descompactar.\n"
+            "  Faca isto apenas em ambiente isolado, com snapshot.\n"
+        )
+
+        if not args.sim:
+            try:
+                confirmacao = input("  Continuar? [s/N] ").strip().lower()
+            except EOFError:
+                confirmacao = ""
+            if confirmacao not in ("s", "sim", "y", "yes"):
+                print("  cancelado.")
+                return 0
+
+        destino = Path(args.saida) if args.saida else CONFIG.samples_dir
+        try:
+            amostra = cliente.baixar_amostra(
+                resultado.sha256 or args.hash, destino
+            )
+        except ErroMalwareBazaar as erro:
+            print(f"erro: {erro}", file=sys.stderr)
+            return 1
+
+        print(f"\n  Salvo em : {amostra.caminho}")
+        print(f"  Tamanho  : {amostra.tamanho_bytes:,} bytes")
+        print(f"  Senha    : {amostra.senha}")
+        for aviso in amostra.avisos:
+            print(f"  aviso: {aviso}")
+        print(
+            "\n  Para analisar, descompacte em VM isolada (7-Zip, senha "
+            f"'{amostra.senha}') e rode:\n"
+            "    python main.py analisar <arquivo>"
+        )
+
+    print()
+    return 0
+
+
 def comando_gui(_args: argparse.Namespace) -> int:
     try:
         from gui.app import main as gui_main
@@ -389,6 +489,26 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--cache", help="caminho alternativo do cache")
     p.add_argument("--forcar", action="store_true", help="baixa mesmo com cache valido")
     p.set_defaults(funcao=comando_atualizar_attack)
+
+    # --- bazaar ---
+    p = sub.add_parser(
+        "bazaar", help="consulta um hash no MalwareBazaar", parents=[comum]
+    )
+    p.add_argument("hash", help="MD5, SHA1 ou SHA256 da amostra")
+    p.add_argument(
+        "--baixar", action="store_true",
+        help="baixa a amostra como ZIP cifrado. ATENCAO: traz malware para "
+             "esta maquina; use apenas em ambiente isolado",
+    )
+    p.add_argument(
+        "-o", "--saida",
+        help="diretorio onde salvar (padrao: SAMPLES_DIR do .env)",
+    )
+    p.add_argument(
+        "--sim", action="store_true",
+        help="nao pergunta antes de baixar (para automacao)",
+    )
+    p.set_defaults(funcao=comando_bazaar)
 
     # --- gui ---
     p = sub.add_parser("gui", help="abre a interface grafica", parents=[comum])

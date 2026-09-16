@@ -105,6 +105,8 @@ class RespostaEnriquecimento:
     # Indicador consultado (hash, IP, dominio).
     indicador: str = ""
     fonte: str = ""
+    # Corpo da resposta sem interpretar, quando bruto=True (ex.: um ZIP).
+    conteudo: bytes = b""
 
     @property
     def util(self) -> bool:
@@ -172,9 +174,20 @@ class ClienteBase:
         caminho: str,
         parametros: dict | None = None,
         cabecalhos: dict | None = None,
+        metodo: str = "GET",
+        formulario: dict | None = None,
+        bruto: bool = False,
     ) -> RespostaEnriquecimento:
         """
-        Faz uma requisicao GET com limite de taxa e repeticao.
+        Faz uma requisicao com limite de taxa e repeticao.
+
+        Args:
+            metodo: "GET" ou "POST". O abuse.ch so aceita POST com
+                form-data, diferente do VirusTotal e do Shodan.
+            formulario: campos do form-data, para POST.
+            bruto: quando True, guarda o corpo em `conteudo` sem tentar
+                interpretar como JSON. Usado no download de amostra, que
+                devolve um ZIP.
 
         Nunca levanta excecao de rede: devolve RespostaEnriquecimento com o
         erro ja sanitizado.
@@ -192,12 +205,21 @@ class ClienteBase:
             self.limitador.aguardar()
 
             try:
-                http = self.sessao.get(
-                    url,
-                    params=parametros,
-                    headers=cabecalhos,
-                    timeout=self.timeout,
-                )
+                if metodo.upper() == "POST":
+                    http = self.sessao.post(
+                        url,
+                        params=parametros,
+                        data=formulario,
+                        headers=cabecalhos,
+                        timeout=self.timeout,
+                    )
+                else:
+                    http = self.sessao.get(
+                        url,
+                        params=parametros,
+                        headers=cabecalhos,
+                        timeout=self.timeout,
+                    )
             except requests.RequestException as erro:
                 # O texto da excecao pode conter a URL inteira, com a chave.
                 detalhe = self._sanitizar(erro)
@@ -245,6 +267,12 @@ class ClienteBase:
 
             if not http.ok:
                 resposta.erro = f"HTTP {http.status_code}: {self._sanitizar(http.text)[:200]}"
+                return resposta
+
+            if bruto:
+                resposta.conteudo = http.content
+                resposta.consultado = True
+                resposta.encontrado = True
                 return resposta
 
             try:

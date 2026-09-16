@@ -235,6 +235,43 @@ class JanelaPrincipal(QMainWindow):
 
         layout.addWidget(grupo_rede)
 
+        # --- MalwareBazaar ---
+        #
+        # Fica num grupo proprio, e nao junto do enriquecimento, porque
+        # baixar amostra nao e enriquecer uma analise: e trazer malware
+        # para a maquina. Separar deixa claro que sao acoes de naturezas
+        # diferentes.
+        grupo_bazaar = QGroupBox("MalwareBazaar")
+        layout_bazaar = QVBoxLayout(grupo_bazaar)
+
+        self.campo_hash_bazaar = QLineEdit()
+        self.campo_hash_bazaar.setPlaceholderText("SHA256 da amostra")
+        self.campo_hash_bazaar.setToolTip(
+            "Hash a consultar no MalwareBazaar. O download exige SHA256; "
+            "a consulta aceita MD5, SHA1 ou SHA256."
+        )
+        layout_bazaar.addWidget(self.campo_hash_bazaar)
+
+        self.botao_consultar_bazaar = QPushButton("Consultar hash")
+        self.botao_consultar_bazaar.clicked.connect(self._consultar_bazaar)
+        layout_bazaar.addWidget(self.botao_consultar_bazaar)
+
+        self.botao_baixar_amostra = QPushButton("Baixar amostra (ZIP cifrado)")
+        self.botao_baixar_amostra.clicked.connect(self._baixar_amostra)
+        layout_bazaar.addWidget(self.botao_baixar_amostra)
+
+        self.rotulo_bazaar = QLabel(
+            "Baixar traz malware para esta maquina. Use apenas em ambiente "
+            "isolado."
+        )
+        self.rotulo_bazaar.setWordWrap(True)
+        self.rotulo_bazaar.setStyleSheet(
+            "QLabel { color: #b3261e; font-size: 11px; }"
+        )
+        layout_bazaar.addWidget(self.rotulo_bazaar)
+
+        layout.addWidget(grupo_bazaar)
+
         # --- Acao ---
         self.botao_analisar = QPushButton("Analisar")
         self.botao_analisar.setMinimumHeight(36)
@@ -540,6 +577,205 @@ class JanelaPrincipal(QMainWindow):
         )
         if resposta == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+
+    # ============================================================
+    # MalwareBazaar
+    # ============================================================
+
+    def _cliente_bazaar(self):
+        """Cria o client, avisando quando a Auth-Key nao esta configurada."""
+        from config.settings import CONFIG
+        from enrichment import malwarebazaar_client
+
+        cliente = malwarebazaar_client.criar(CONFIG)
+        if cliente is None:
+            QMessageBox.information(
+                self,
+                "MalwareBazaar indisponivel",
+                "Auth-Key nao configurada, ou enriquecimento desabilitado no "
+                ".env.\n\nA chave e obtida em auth.abuse.ch e vale para todos "
+                "os servicos do abuse.ch.",
+            )
+        return cliente
+
+    def _consultar_bazaar(self) -> None:
+        """Consulta o hash. Nao baixa nada."""
+        from enrichment.malwarebazaar_client import ErroMalwareBazaar
+
+        valor = self.campo_hash_bazaar.text().strip()
+        if not valor:
+            QMessageBox.information(
+                self, "Informe o hash", "Preencha o hash da amostra."
+            )
+            return
+
+        cliente = self._cliente_bazaar()
+        if cliente is None:
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            with cliente:
+                r = cliente.consultar_hash(valor)
+        except ErroMalwareBazaar as erro:
+            QMessageBox.critical(self, "Falha na consulta", str(erro))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if r.erro:
+            QMessageBox.warning(self, "MalwareBazaar", r.erro)
+            return
+
+        if not r.encontrado:
+            QMessageBox.information(
+                self, "MalwareBazaar", f"{r.resumo}\n\n" + "\n".join(r.observacoes)
+            )
+            return
+
+        linhas = [
+            f"Familia      : {r.familia or '-'}",
+            f"Tags         : {', '.join(r.tags) or '-'}",
+            f"Tipo         : {r.tipo} {r.formato} {r.arquitetura}".strip(),
+            f"Tamanho      : {r.tamanho_bytes:,} bytes",
+            f"Entrega      : {r.metodo_de_entrega or '-'}",
+            f"Visto em     : {r.primeira_vez_visto} por {r.reportado_por}",
+            f"SHA256       : {r.sha256}",
+            f"Regras YARA  : {len(r.regras_yara)} da comunidade",
+            f"Fontes       : {', '.join(r.fontes_externas[:5]) or '-'}",
+            f"Senha do ZIP : {r.senha_do_arquivo}",
+        ]
+        if r.regras_yara:
+            linhas += ["", "Regras que casam:"]
+            linhas += [f"  - {nome}" for nome in r.regras_yara[:8]]
+
+        QMessageBox.information(
+            self, f"MalwareBazaar — {r.resumo}", "\n".join(linhas)
+        )
+
+        # O SHA256 canonico facilita o download logo em seguida.
+        if r.sha256:
+            self.campo_hash_bazaar.setText(r.sha256)
+
+    def _baixar_amostra(self) -> None:
+        """
+        Baixa a amostra como ZIP cifrado.
+
+        Pede confirmacao antes e nao descompacta. A extracao e oferecida
+        depois, como passo separado, porque e ela que produz o arquivo
+        executavel.
+        """
+        from config.settings import CONFIG
+        from enrichment.malwarebazaar_client import ErroMalwareBazaar
+
+        valor = self.campo_hash_bazaar.text().strip()
+        if not valor:
+            QMessageBox.information(
+                self, "Informe o hash", "Preencha o SHA256 da amostra."
+            )
+            return
+
+        resposta = QMessageBox.warning(
+            self,
+            "Baixar amostra de malware",
+            f"Voce vai baixar a amostra {valor[:16]}... do MalwareBazaar.\n\n"
+            "O arquivo sera gravado como ZIP cifrado, sem descompactar — em "
+            "repouso ele e inerte.\n\n"
+            "Ainda assim, isto traz malware para esta maquina. Faca apenas em "
+            "ambiente isolado, com snapshot.\n\nContinuar?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if resposta != QMessageBox.Yes:
+            return
+
+        cliente = self._cliente_bazaar()
+        if cliente is None:
+            return
+
+        destino = QFileDialog.getExistingDirectory(
+            self, "Onde salvar a amostra", str(CONFIG.samples_dir)
+        )
+        if not destino:
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.statusBar().showMessage("Baixando amostra...")
+        try:
+            with cliente:
+                amostra = cliente.baixar_amostra(valor, destino)
+        except ErroMalwareBazaar as erro:
+            QMessageBox.critical(self, "Falha no download", str(erro))
+            self.statusBar().showMessage("Download falhou")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self.statusBar().showMessage(f"Amostra salva em {amostra.caminho}")
+        self._oferecer_extracao(amostra)
+
+    def _oferecer_extracao(self, amostra) -> None:
+        """
+        Oferece descompactar, deixando claro o que muda.
+
+        Zipado, o arquivo nao e executavel por nada. Extraido, passa a ser
+        malware vivo em disco — e essa e a unica acao do RabMapper com esse
+        efeito.
+        """
+        from enrichment.malwarebazaar_client import ErroMalwareBazaar
+
+        resposta = QMessageBox.warning(
+            self,
+            "Amostra baixada",
+            f"Salvo em:\n{amostra.caminho}\n\n"
+            f"Senha do arquivo: {amostra.senha}\n\n"
+            "O ZIP cifrado e inerte. Descompactar grava o MALWARE VIVO em "
+            "disco.\n\nDescompactar agora?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if resposta != QMessageBox.Yes:
+            QMessageBox.information(
+                self,
+                "Amostra mantida zipada",
+                "Para descompactar depois, use 7-Zip com a senha "
+                f"'{amostra.senha}'.",
+            )
+            return
+
+        confirmacao = QMessageBox.critical(
+            self,
+            "Confirmar extracao",
+            "Confirme que esta em ambiente ISOLADO: maquina virtual, sem rede "
+            "compartilhada, com snapshot.\n\n"
+            "O arquivo sera gravado sem extensao, para nao ser executavel por "
+            "duplo clique — mas continua sendo malware.\n\nExtrair?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirmacao != QMessageBox.Yes:
+            return
+
+        cliente = self._cliente_bazaar()
+        if cliente is None:
+            return
+
+        try:
+            extraida = cliente.extrair_amostra(
+                amostra, confirmo_ambiente_isolado=True
+            )
+        except ErroMalwareBazaar as erro:
+            QMessageBox.critical(self, "Falha ao extrair", str(erro))
+            return
+
+        self._definir_arquivo(extraida.caminho)
+        QMessageBox.information(
+            self,
+            "Amostra extraida",
+            f"{extraida.caminho}\n\n"
+            f"SHA256 conferido: {'sim' if extraida.hash_confere else 'NAO'}\n\n"
+            "A amostra foi selecionada para analise. Clique em Analisar.",
+        )
 
     # ============================================================
     # Ferramentas

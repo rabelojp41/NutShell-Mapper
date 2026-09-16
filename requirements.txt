@@ -17,7 +17,8 @@ mitreattack-python>=3.0.6   # MITRE ATT&CK oficial via STIX 2.x
 cvss>=3.2                   # calculo de score CVSS 3.1 / 4.0
 
 # --- Enriquecimento (APIs externas) ---
-requests>=2.32.0            # clients HTTP (VirusTotal, Shodan)
+requests>=2.32.0            # clients HTTP (VirusTotal, Shodan, MalwareBazaar)
+pyzipper>=0.3.6             # ZIP com AES: formato em que o MalwareBazaar entrega amostra
 
 # --- Configuracao ---
 python-dotenv>=1.0.1        # carrega API keys do .env

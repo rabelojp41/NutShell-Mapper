@@ -37,6 +37,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `core/pipeline.py` | orquestra as etapas, isola falhas e consolida o resultado |
 | `enrichment/virustotal_client.py` | lookup de hash, IP, dominio e URL. **Nao envia o arquivo** |
 | `enrichment/shodan_client.py` | portas e servicos dos IPs publicos extraidos |
+| `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
 | `gui/` | interface desktop em PySide6 |
 | `main.py` | linha de comando |
@@ -91,12 +92,37 @@ Outros comandos:
 | `python main.py config` | mostra a configuracao e verifica o ambiente |
 | `python main.py cvss "<vetor>"` | calcula um score CVSS 3.1 avulso |
 | `python main.py atualizar-attack` | baixa o bundle STIX do MITRE ATT&CK |
+| `python main.py bazaar <hash>` | consulta um hash no MalwareBazaar |
 | `python main.py gui` | abre a interface grafica |
 
 Opcoes uteis do `analisar`: `--sem-floss` (bem mais rapido, so strings
 estaticas), `--sem-stix` (offline), `--benigno arquivo.exe` (testa a regra
 YARA contra um binario legitimo), `--enriquecer` (consulta VirusTotal e
 Shodan), `--formato sc32|sc64` (forca a arquitetura de um shellcode).
+
+### MalwareBazaar
+
+Consulta por hash traz o que o VirusTotal nao da bem: rotulo de familia
+consolidado, tags de campanha, metodo de entrega e as regras YARA da
+comunidade que casam com a amostra - uteis para comparar com a regra que o
+RabMapper gerou.
+
+```bash
+python main.py bazaar 3210e85897ab370c889b203224d906ddd5e8b1e997e5f61799b2da15b45e3e23
+```
+
+O download de amostra existe, no CLI (`--baixar`) e na interface, mas e uma
+acao a parte:
+
+- A amostra e gravada como **ZIP cifrado, sem descompactar**. Em repouso
+  ela e inerte.
+- Descompactar e um segundo passo, com confirmacao propria, porque e ele
+  que grava malware executavel em disco. O arquivo sai sem extensao e o
+  SHA256 e conferido.
+- **So faca isso em maquina virtual isolada, com snapshot.**
+
+Baixar nunca acontece como efeito colateral de analisar um artefato: o
+pipeline so consulta por hash.
 
 ### Shellcode
 
@@ -121,7 +147,7 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 python -m pytest
 ```
 
-335 testes, todos offline: nenhum faz requisicao de rede nem depende do
+361 testes, todos offline: nenhum faz requisicao de rede nem depende do
 bundle de ~50 MB do ATT&CK.
 
 Alguns deles rodam a emulacao real do FLOSS sobre shellcode gerado, e sao a

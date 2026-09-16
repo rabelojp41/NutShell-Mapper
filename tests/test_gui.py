@@ -325,3 +325,65 @@ def test_janela_expoe_o_formato_do_artefato(aplicacao):
         assert janela.formato.currentText() == "sc64"
     finally:
         janela.close()
+
+
+def test_janela_expoe_o_painel_do_malwarebazaar(aplicacao):
+    """
+    O painel fica separado do enriquecimento de proposito: baixar amostra
+    nao e enriquecer uma analise, e trazer malware para a maquina.
+    """
+    from gui.app import JanelaPrincipal
+
+    janela = JanelaPrincipal()
+    try:
+        assert janela.campo_hash_bazaar.text() == ""
+        assert janela.botao_consultar_bazaar.isEnabled()
+        assert janela.botao_baixar_amostra.isEnabled()
+        # O aviso sobre o risco precisa estar visivel, nao escondido em tooltip.
+        assert "isolado" in janela.rotulo_bazaar.text()
+    finally:
+        janela.close()
+
+
+def test_download_exige_hash(aplicacao, monkeypatch):
+    """Sem hash, nao pode nem chegar a pedir confirmacao de download."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from gui.app import JanelaPrincipal
+
+    avisos = []
+    monkeypatch.setattr(
+        QMessageBox, "information", lambda *a, **k: avisos.append(a[1:3])
+    )
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        lambda *a, **k: pytest.fail("nao deveria pedir confirmacao sem hash"),
+    )
+
+    janela = JanelaPrincipal()
+    try:
+        janela.campo_hash_bazaar.setText("   ")
+        janela._baixar_amostra()
+        assert avisos
+    finally:
+        janela.close()
+
+
+def test_download_cancelado_nao_cria_cliente(aplicacao, monkeypatch):
+    """Recusar a confirmacao precisa abortar antes de qualquer requisicao."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from gui.app import JanelaPrincipal
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.No)
+
+    janela = JanelaPrincipal()
+    try:
+        monkeypatch.setattr(
+            janela, "_cliente_bazaar",
+            lambda: pytest.fail("nao deveria criar cliente apos cancelar"),
+        )
+        janela.campo_hash_bazaar.setText("a" * 64)
+        janela._baixar_amostra()
+    finally:
+        janela.close()
