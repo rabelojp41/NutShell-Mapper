@@ -63,45 +63,63 @@ class Paleta:
 
 
 ESCURO = Paleta(
-    fundo="#1b1d21",
-    superficie="#24272c",
-    superficie_alta="#2c3036",
-    borda="#3a3f46",
-    borda_suave="#2f343a",
-    texto="#e4e6e9",
-    texto_fraco="#a8aeb6",
-    texto_apagado="#767c85",
-    destaque="#4c8dff",
-    destaque_fraco="rgba(76, 141, 255, 0.16)",
+    # Fundo quase preto com desvio para o roxo, em vez de cinza neutro. A
+    # diferenca e sutil por pixel e enorme no conjunto: o olho le a tela
+    # inteira como tendo uma cor, nao como cinza escuro qualquer.
+    fundo="#0f0c17",
+    superficie="#171325",
+    superficie_alta="#1f1930",
+    borda="#3d2f5c",
+    borda_suave="#2a2140",
+    # Texto com o mesmo desvio quente, para nao brigar com o fundo.
+    texto="#e9e4f5",
+    texto_fraco="#a99cc7",
+    texto_apagado="#6f6490",
+    # Roxo neon. Saturado o bastante para parecer emitir luz sobre um fundo
+    # escuro, e claro o bastante para texto branco em cima dele passar em
+    # contraste.
+    destaque="#a855f7",
+    destaque_fraco="rgba(168, 85, 247, 0.18)",
     destaque_texto="#ffffff",
-    alta="#ff7b72",
-    media="#e3b341",
-    baixa="#9aa0a6",
-    perigo="#ff7b72",
-    sucesso="#56d364",
-    realce="rgba(255, 255, 255, 0.06)",
-    selecao="rgba(76, 141, 255, 0.22)",
+    # Os tres niveis de confianca diferem em LUMINOSIDADE, e nao so em
+    # matiz (194 / 135 / 112). Isso importa porque a distincao entre alta e
+    # media e a informacao mais importante da ferramenta: se ela depender
+    # so da cor, quem tem dificuldade de distinguir vermelho e verde perde
+    # o dado. Na primeira versao desta paleta o rosa e o laranja tinham
+    # luminosidade identica - um teste pegou.
+    alta="#ff85b0",
+    media="#e09b2d",
+    baixa="#655b85",
+    # O perigo continua no rosa neon saturado: ele aparece sozinho, sem
+    # precisar ser comparado com outro nivel.
+    perigo="#ff4d8f",
+    sucesso="#3ce8b0",
+    realce="rgba(168, 85, 247, 0.09)",
+    selecao="rgba(168, 85, 247, 0.28)",
 )
 
 CLARO = Paleta(
-    fundo="#f5f6f8",
+    # O tema claro segue a mesma familia roxa, mas o neon nao funciona sobre
+    # fundo claro - ele some. Aqui o roxo e fechado e saturado, para manter
+    # a identidade sem perder contraste.
+    fundo="#f7f5fb",
     superficie="#ffffff",
-    superficie_alta="#fafbfc",
-    borda="#d5d9de",
-    borda_suave="#e6e9ec",
-    texto="#1f2328",
-    texto_fraco="#57606a",
-    texto_apagado="#848d97",
-    destaque="#1a73e8",
-    destaque_fraco="rgba(26, 115, 232, 0.10)",
+    superficie_alta="#faf8fd",
+    borda="#d8cfe8",
+    borda_suave="#e9e3f2",
+    texto="#1c1526",
+    texto_fraco="#584a6e",
+    texto_apagado="#857a99",
+    destaque="#7c3aed",
+    destaque_fraco="rgba(124, 58, 237, 0.10)",
     destaque_texto="#ffffff",
-    alta="#c0392b",
-    media="#b9770e",
-    baixa="#707b7c",
-    perigo="#b3261e",
-    sucesso="#1a7f37",
-    realce="rgba(0, 0, 0, 0.04)",
-    selecao="rgba(26, 115, 232, 0.14)",
+    alta="#c2185b",
+    media="#b26a00",
+    baixa="#6f6685",
+    perigo="#b3123f",
+    sucesso="#00795c",
+    realce="rgba(124, 58, 237, 0.06)",
+    selecao="rgba(124, 58, 237, 0.16)",
 )
 
 
@@ -196,9 +214,10 @@ QToolTip {{
 
 /* ---------- Tipografia ---------- */
 QLabel#{TITULO} {{
-    font-size: 22px;
-    font-weight: 600;
-    color: {p.texto};
+    font-size: 26px;
+    font-weight: 700;
+    color: {p.destaque};
+    letter-spacing: 3px;
 }}
 
 QLabel#{SUBTITULO} {{
@@ -207,9 +226,10 @@ QLabel#{SUBTITULO} {{
 }}
 
 QLabel#{CABECALHO_SECAO} {{
-    font-size: 12px;
-    font-weight: 600;
-    color: {p.texto_fraco};
+    font-size: 10px;
+    font-weight: 700;
+    color: {p.destaque};
+    letter-spacing: 2px;
     padding-top: {e['sm']}px;
 }}
 
@@ -232,6 +252,7 @@ QLabel#{AVISO} {{
 QGroupBox {{
     background-color: {p.superficie};
     border: 1px solid {p.borda_suave};
+    border-top: 1px solid {p.borda};
     border-radius: {RAIO}px;
     margin-top: {e['md']}px;
     padding: {e['md']}px {e['sm']}px {e['sm']}px {e['sm']}px;
@@ -242,10 +263,12 @@ QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: {e['md']}px;
-    padding: 0 {e['xs']}px;
-    color: {p.texto_fraco};
-    font-size: 11px;
+    padding: 0 {e['sm']}px;
+    color: {p.destaque};
+    font-size: 10px;
+    font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 1.5px;
 }}
 
 /* ---------- Botoes ---------- */
@@ -281,8 +304,14 @@ QPushButton#{BOTAO_PRIMARIO} {{
     padding: {e['md']}px;
 }}
 
+QPushButton#{BOTAO_PRIMARIO} {{
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 12px;
+}}
+
 QPushButton#{BOTAO_PRIMARIO}:hover:enabled {{
-    background-color: {p.destaque};
+    background-color: #c77dff;
     border: none;
 }}
 
@@ -384,8 +413,9 @@ QTabBar::tab:hover {{
 
 QTabBar::tab:selected {{
     color: {p.destaque};
-    border-bottom: 2px solid {p.destaque};
-    font-weight: 600;
+    border-bottom: 3px solid {p.destaque};
+    background: {p.destaque_fraco};
+    font-weight: 700;
 }}
 
 /* ---------- Tabelas ---------- */
@@ -411,12 +441,14 @@ QTableWidget::item:selected, QTreeWidget::item:selected {{
 
 QHeaderView::section {{
     background-color: {p.superficie_alta};
-    color: {p.texto_fraco};
+    color: {p.destaque};
     border: none;
-    border-bottom: 1px solid {p.borda};
+    border-bottom: 2px solid {p.borda};
     padding: {e['sm']}px;
-    font-weight: 600;
-    font-size: 11px;
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }}
 
 QTreeWidget::branch {{
@@ -457,7 +489,7 @@ QScrollBar::handle:vertical {{
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background: {p.texto_apagado};
+    background: {p.destaque};
 }}
 
 QScrollBar:horizontal {{

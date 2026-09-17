@@ -470,3 +470,31 @@ def test_cores_seguem_o_tema(aplicacao, monkeypatch):
 def test_fundo_de_nota_e_translucido():
     """Cinza translucido escurece fundo claro e clareia fundo escuro."""
     assert views.fundo_de_nota().startswith("rgba(")
+
+
+def test_paletas_mantem_contraste_de_texto(aplicacao):
+    """
+    Tema cyberpunk nao pode custar legibilidade. O texto principal precisa
+    contrastar com o fundo nos dois temas - neon bonito e ilegivel nao
+    serve para uma ferramenta que se le por horas.
+    """
+    from gui.estilo import CLARO, ESCURO
+
+    for nome, p in (("escuro", ESCURO), ("claro", CLARO)):
+        fundo = views.QColor(p.fundo).lightness()
+        texto = views.QColor(p.texto).lightness()
+        assert abs(texto - fundo) > 120, f"contraste fraco no tema {nome}"
+
+
+def test_niveis_de_confianca_sao_distinguiveis(aplicacao):
+    """
+    Alta, media e baixa precisam diferir em LUMINOSIDADE, nao so em matiz -
+    caso contrario quem nao distingue vermelho de verde perde a informacao.
+    """
+    from gui.estilo import ESCURO
+
+    luzes = sorted(
+        views.QColor(c).lightness() for c in (ESCURO.alta, ESCURO.media, ESCURO.baixa)
+    )
+    for anterior, seguinte in zip(luzes, luzes[1:]):
+        assert seguinte - anterior > 15, "niveis de confianca perto demais"
