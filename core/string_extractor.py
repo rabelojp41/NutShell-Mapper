@@ -82,6 +82,7 @@ class TipoIOC(str, Enum):
     CHAVE_REGISTRO = "chave_registro"
     HASH = "hash"
     BITCOIN = "bitcoin"
+    CVE = "cve"
 
 
 class Confianca(str, Enum):
@@ -258,6 +259,11 @@ RE_CHAVE_REGISTRO_RELATIVA = re.compile(
 RE_HASH = re.compile(
     r"(?<![\w])(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|[a-fA-F0-9]{64})(?![\w])"
 )
+
+# Referencia a vulnerabilidade conhecida. Quando um artefato cita uma CVE
+# nas strings, isso e um achado forte: ou ele explora a falha, ou carrega o
+# exploit, ou o autor deixou a referencia no codigo.
+RE_CVE = re.compile(r"(?<![\w-])CVE-\d{4}-\d{4,7}(?![\w-])", re.IGNORECASE)
 
 RE_BITCOIN = re.compile(
     r"(?<![\w])(?:[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{39,59})(?![\w])"
@@ -639,8 +645,24 @@ def _detectar_em_string(s: StringExtraida) -> Iterator[IOC]:
         aceito, _motivo = _dominio_plausivel(dominio)
         if not aceito:
             continue
+
         if any(dominio in url for url in urls):
             yield ioc(dominio, TipoIOC.DOMINIO, Confianca.ALTA, "aparece dentro de uma URL")
+            continue
+
+        # Dominio curto demais aparece por acaso em dado binario: um PDF
+        # gerou "n.St" a partir de bytes de imagem, e "st" e TLD valido
+        # (Sao Tome). Nao da para descartar - "t.me" e um dominio real e
+        # usado por malware - entao e rebaixado, com o motivo, em vez de
+        # sumir.
+        rotulo = dominio.rsplit(".", 1)[0]
+        if len(rotulo) < 3 or len(dominio) < 7:
+            yield ioc(
+                dominio,
+                TipoIOC.DOMINIO,
+                Confianca.BAIXA,
+                "dominio muito curto: aparece por acaso em dado binario",
+            )
         else:
             yield ioc(dominio, TipoIOC.DOMINIO, Confianca.MEDIA)
 
@@ -667,7 +689,27 @@ def _detectar_em_string(s: StringExtraida) -> Iterator[IOC]:
 
     # --- Hash embutido ---
     for m in RE_HASH.finditer(texto):
+        # Todo PDF tem um campo /ID: dois identificadores de 32 caracteres
+        # hexadecimais, no formato "[<hex><hex>]". Eles sao indistinguiveis
+        # de um MD5 para a regex, e sem este corte QUALQUER PDF analisado
+        # reportaria um "hash embutido" que na verdade e so estrutura do
+        # formato. O delimitador "<...>" e o que os identifica: em PDF ele
+        # marca string hexadecimal.
+        antes = texto[m.start() - 1] if m.start() > 0 else ""
+        depois = texto[m.end()] if m.end() < len(texto) else ""
+        if antes == "<" and depois == ">":
+            continue
+
         yield ioc(m.group(), TipoIOC.HASH, Confianca.MEDIA, "hash embutido no binario")
+
+    # --- Referencia a CVE ---
+    for m in RE_CVE.finditer(texto):
+        yield ioc(
+            m.group().upper(),
+            TipoIOC.CVE,
+            Confianca.ALTA,
+            "vulnerabilidade referenciada no artefato",
+        )
 
     # --- Carteira Bitcoin (tipico de ransomware) ---
     for m in RE_BITCOIN.finditer(texto):

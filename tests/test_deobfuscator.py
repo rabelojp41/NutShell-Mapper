@@ -340,3 +340,34 @@ def test_resultado_serializavel():
     resultado = desofuscar([StringExtraida(valor=escondido, tipo=TipoString.STATIC)])
     d = resultado.to_dict()
     assert d["achados"][0]["decodificado"] == "http://serial.top/a"
+
+
+def test_resultado_curto_nao_vira_achado():
+    """
+    Regressao de caso real: um PDF produziu ".bat(" pela cadeia
+    "rot13 -> xor -> rot13" - cinco caracteres, legiveis, com a ancora
+    ".bat" dentro, e completamente sem sentido. Com tao poucos bytes,
+    acertar uma ancora por acaso e esperado.
+    """
+    for a in desofuscar_valor("t=Di76?c ?r", pular_triagem=True):
+        assert len(a.decodificado.strip()) >= 12, (
+            f"achado curto demais: {a.cadeia} -> {a.decodificado!r}"
+        )
+
+
+def test_rot13_duas_vezes_na_cadeia_e_recusado():
+    """
+    ROT13 e involutivo: repeti-lo na mesma cadeia so mascara que o
+    resultado veio de coincidencia do que estiver no meio.
+    """
+    from core.deobfuscator import Tecnica, _aceitar
+
+    cadeia = (Tecnica.ROT13, Tecnica.XOR_1_BYTE, Tecnica.ROT13)
+    aceito = _aceitar(cadeia, 1.0, (".bat",), b"cmd.exe /c algo longo aqui")
+    assert aceito is False
+
+
+def test_decodificacao_longa_e_legitima_continua_passando():
+    alvo = b"http://c2-longo-o-suficiente.top/gate.php"
+    achados = desofuscar_blob(_xor(alvo, 0x33))
+    assert any(a.decodificado == alvo.decode() for a in achados)

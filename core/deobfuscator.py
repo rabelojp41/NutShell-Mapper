@@ -245,6 +245,12 @@ CARACTERES_DE_TEXTO = frozenset(
 # legivel. Vale so para as tecnicas que preservam a forma de texto.
 LEGIBILIDADE_MINIMA = 0.90
 
+# Comprimento minimo do texto decodificado para as tecnicas que preservam
+# forma. Abaixo disso, acertar uma ancora por acaso e esperado: um PDF
+# produziu ".bat(" - cinco caracteres, legiveis, com ancora dentro, e sem
+# significado nenhum.
+TAMANHO_MINIMO_DECODIFICADO = 12
+
 
 def legibilidade(texto: str) -> float:
     """
@@ -549,8 +555,25 @@ def _aceitar(
     if TECNICAS_QUE_PRESERVAM_FORMA.intersection(cadeia):
         if not ancoras:
             return False
+
         texto = saida.decode("utf-8", "replace")
+
         if legibilidade(texto) < LEGIBILIDADE_MINIMA:
+            return False
+
+        # Resultado curto nao prova nada, mesmo contendo ancora. Um PDF
+        # produziu ".bat(" por "rot13 -> xor -> rot13": cinco caracteres,
+        # legiveis, com a ancora ".bat" dentro - e completamente sem
+        # sentido. Com tao poucos bytes, acertar uma ancora por acaso e
+        # esperado, nao notavel.
+        if len(texto.strip()) < TAMANHO_MINIMO_DECODIFICADO:
+            return False
+
+        # ROT13 duas vezes na mesma cadeia e sinal de busca as cegas: a
+        # transformacao e involutiva, entao o unico efeito de repeti-la e
+        # mascarar que o resultado veio de coincidencia do que estiver no
+        # meio.
+        if cadeia.count(Tecnica.ROT13) > 1:
             return False
 
     return True

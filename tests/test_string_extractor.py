@@ -434,3 +434,52 @@ def test_saida_vazia_do_floss_tem_mensagem_honesta(tmp_path, monkeypatch):
     assert not any("codigo de saida 0" in a for a in resultado.avisos)
     # O extrator nativo salvou a analise.
     assert resultado.strings
+
+
+def test_id_de_pdf_nao_vira_hash():
+    """
+    Regressao: todo PDF tem um campo /ID com dois identificadores de 32
+    caracteres hexadecimais, no formato "[<hex><hex>]". Eles sao
+    indistinguiveis de um MD5 para a regex, entao QUALQUER PDF analisado
+    reportava um "hash embutido" que e so estrutura do formato.
+    """
+    id_de_pdf = "[<5de6cd96c28306aad45ba4337fac696b><5de6cd96c28306aad45ba4337fac696b>]"
+    assert _valores(_iocs(id_de_pdf), TipoIOC.HASH) == set()
+
+
+def test_hash_de_verdade_continua_sendo_detectado():
+    """O corte do /ID nao pode silenciar hash embutido legitimo."""
+    texto = "config hash: 5de6cd96c28306aad45ba4337fac696b"
+    assert _valores(_iocs(texto), TipoIOC.HASH) == {
+        "5de6cd96c28306aad45ba4337fac696b"
+    }
+
+
+def test_dominio_curto_de_ruido_e_rebaixado():
+    """
+    Regressao: um PDF real produziu "n.St" a partir de bytes de imagem, e
+    "st" e TLD valido (Sao Tome), entao passava como confianca media.
+    Dominio curto assim aparece por acaso em qualquer dado binario.
+    """
+    achado = [i for i in _iocs("n.St") if i.tipo is TipoIOC.DOMINIO][0]
+    assert achado.confianca is Confianca.BAIXA
+    assert "por acaso" in achado.observacao
+
+
+def test_dominio_normal_continua_media():
+    achado = [i for i in _iocs("update-server.ru") if i.tipo is TipoIOC.DOMINIO][0]
+    assert achado.confianca is Confianca.MEDIA
+
+
+def test_cve_e_detectada():
+    """Artefato que cita CVE e achado forte: ou explora, ou carrega exploit."""
+    achados = _iocs("Exploit para CVE-2021-44228 (Log4Shell)")
+    cves = [i for i in achados if i.tipo is TipoIOC.CVE]
+    assert len(cves) == 1
+    assert cves[0].valor == "CVE-2021-44228"
+    assert cves[0].confianca is Confianca.ALTA
+
+
+def test_cve_normaliza_maiuscula():
+    cves = [i for i in _iocs("cve-2017-0144") if i.tipo is TipoIOC.CVE]
+    assert cves[0].valor == "CVE-2017-0144"
