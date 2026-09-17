@@ -48,11 +48,12 @@ propria amostra antes de ser considerada valida:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +438,41 @@ def verificar(texto: str, r: Any) -> list[Invencao]:
 # ============================================================
 
 
+@dataclass
+class EstadoGeracao:
+    """
+    Como vai a geracao, enquanto ela acontece.
+
+    Existe para que quem espera consiga distinguir "esta gerando devagar"
+    de "travou". Sem isso a unica saida e matar o processo no escuro.
+    """
+
+    # O que o modelo escreveu ate agora.
+    texto_parcial: str
+    # Quantos pedacos chegaram. Aproxima a contagem de tokens: o Ollama
+    # manda um por token gerado, mas isso e detalhe do servidor e nao uma
+    # garantia, entao o nome nao promete token.
+    pedacos: int
+    segundos: float
+    concluido: bool = False
+
+    @property
+    def por_segundo(self) -> float:
+        """Ritmo da geracao. Zero enquanto nao da para estimar."""
+        return self.pedacos / self.segundos if self.segundos > 0.5 else 0.0
+
+    def resumo(self) -> str:
+        """Uma linha curta para barra de status."""
+        if self.concluido:
+            return f"resumo gerado: {self.pedacos} tokens em {self.segundos:.0f}s"
+        ritmo = f", {self.por_segundo:.1f}/s" if self.por_segundo else ""
+        return f"gerando resumo: {self.pedacos} tokens em {self.segundos:.0f}s{ritmo}"
+
+
+# Chamado a cada pedaco recebido do modelo.
+CallbackGeracao = Callable[[EstadoGeracao], None]
+
+
 class ClienteOllama:
     """Acesso ao Ollama local."""
 
@@ -487,9 +523,21 @@ class ClienteOllama:
 
         return True, ""
 
-    def gerar(self, prompt: str) -> str:
+    def gerar(self, prompt: str, progresso: CallbackGeracao | None = None) -> str:
         """
         Gera texto a partir do prompt.
+
+        A resposta vem em streaming mesmo quando ninguem esta observando. O
+        motivo nao e estetico: uma geracao de 8B leva de dez segundos a
+        varios minutos, e com `stream: False` a conexao fica muda esse tempo
+        todo. Quem espera nao consegue distinguir "esta gerando" de
+        "travou", e o unico recurso vira matar o processo - as vezes a
+        segundos do fim.
+
+        Args:
+            prompt: o texto de entrada.
+            progresso: chamado a cada pedaco recebido, com o estado parcial
+                da geracao. Opcional.
 
         Raises:
             ErroResumoIA: servidor fora do ar, modelo ausente ou resposta
@@ -497,13 +545,16 @@ class ClienteOllama:
         """
         import requests
 
+        partes: list[str] = []
+        inicio = time.monotonic()
+
         try:
             resposta = requests.post(
                 f"{self.url}/api/generate",
                 json={
                     "model": self.modelo,
                     "prompt": prompt,
-                    "stream": False,
+                    "stream": True,
                     "keep_alive": MANTER_CARREGADO,
                     "options": {
                         # Temperatura zero: o resumo precisa ser o mais
@@ -514,18 +565,50 @@ class ClienteOllama:
                     },
                 },
                 timeout=self.timeout,
+                stream=True,
             )
             resposta.raise_for_status()
+
+            for linha in resposta.iter_lines(decode_unicode=False):
+                if not linha:
+                    continue
+
+                # Cada linha e um JSON completo. Uma linha malformada no
+                # meio do fluxo nao justifica descartar o que ja chegou.
+                try:
+                    pedaco = json.loads(linha)
+                except ValueError:
+                    logger.debug("linha nao-JSON no fluxo do Ollama, ignorada")
+                    continue
+
+                if pedaco.get("error"):
+                    raise ErroResumoIA(f"o Ollama recusou: {pedaco['error']}")
+
+                partes.append(pedaco.get("response", ""))
+
+                if progresso is not None:
+                    progresso(
+                        EstadoGeracao(
+                            texto_parcial="".join(partes),
+                            pedacos=len(partes),
+                            segundos=time.monotonic() - inicio,
+                            concluido=bool(pedaco.get("done")),
+                        )
+                    )
+
+                if pedaco.get("done"):
+                    break
+
+        except ErroResumoIA:
+            raise
         except Exception as erro:
+            # O que ja chegou nao se aproveita: um resumo cortado no meio
+            # seria pior que nenhum, porque parece completo.
             raise ErroResumoIA(
                 f"falha ao chamar o Ollama: {type(erro).__name__}: {erro}"
             ) from erro
 
-        try:
-            texto = resposta.json().get("response", "")
-        except ValueError as erro:
-            raise ErroResumoIA(f"resposta do Ollama nao e JSON: {erro}") from erro
-
+        texto = "".join(partes)
         if not texto.strip():
             raise ErroResumoIA("o modelo devolveu resposta vazia")
 
@@ -542,6 +625,7 @@ def gerar_resumo(
     modelo: str = MODELO_PADRAO,
     url: str = URL_OLLAMA_PADRAO,
     timeout: int = TIMEOUT_PADRAO,
+    progresso: CallbackGeracao | None = None,
 ) -> ResumoIA:
     """
     Gera o resumo executivo da analise usando o LLM local.
@@ -552,6 +636,9 @@ def gerar_resumo(
         url: endereco do servidor Ollama.
         timeout: limite em segundos. A primeira chamada carrega o modelo e
             pode passar de dois minutos.
+        progresso: chamado a cada pedaco gerado, para quem quiser mostrar o
+            andamento. Esta e a unica etapa do pipeline que leva minutos
+            sem produzir sinal nenhum por conta propria.
 
     Returns:
         ResumoIA, sempre. Falha vira `erro` preenchido, nunca excecao: o
@@ -569,7 +656,7 @@ def gerar_resumo(
     inicio = time.monotonic()
 
     try:
-        resumo.texto = cliente.gerar(prompt)
+        resumo.texto = cliente.gerar(prompt, progresso=progresso)
     except ErroResumoIA as erro:
         resumo.erro = str(erro)
         resumo.duracao_segundos = time.monotonic() - inicio

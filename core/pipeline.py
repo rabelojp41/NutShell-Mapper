@@ -69,6 +69,11 @@ CallbackProgresso = Callable[[Estagio, str, float], None]
 # Callback de cancelamento: devolve True quando o usuario pediu para parar.
 CallbackCancelamento = Callable[[], bool]
 
+# De quanto em quanto tempo repassar o andamento da geracao por IA. O
+# modelo emite dezenas de pedacos por segundo e ninguem le nessa
+# velocidade; o que importa e nao ficar mudo.
+INTERVALO_ANDAMENTO_IA = 0.5
+
 
 @dataclass
 class OpcoesAnalise:
@@ -496,9 +501,29 @@ def analisar(
     # produziram, entao precisa delas concluidas.
 
     if opcoes.resumo_ia:
+        # Esta e a unica etapa que pode levar minutos sem produzir sinal
+        # nenhum: o modelo pensa em silencio. Repassar o andamento token a
+        # token e o que permite a quem espera distinguir "gerando devagar"
+        # de "travou" - sem isso a unica saida e matar o processo no escuro,
+        # as vezes a segundos do fim.
+        # O modelo emite um pedaco por token, dezenas por segundo. Repassar
+        # cada um faria a interface grafica processar centenas de eventos
+        # por segundo para reescrever o mesmo rotulo - quem observa nao le
+        # mais rapido que isso. Uma atualizacao a cada meio segundo ja
+        # remove o silencio, que era o problema.
+        ultimo_aviso = [0.0]
+
+        def _andamento(estado) -> None:
+            agora = time.monotonic()
+            if estado.concluido or agora - ultimo_aviso[0] >= INTERVALO_ANDAMENTO_IA:
+                ultimo_aviso[0] = agora
+                executor.anunciar(Estagio.RESUMO_IA, estado.resumo())
+
         resultado.resumo_ia = executor.rodar(
             Estagio.RESUMO_IA,
-            lambda: resumo_ia_mod.gerar_resumo(resultado, modelo=opcoes.modelo_ia),
+            lambda: resumo_ia_mod.gerar_resumo(
+                resultado, modelo=opcoes.modelo_ia, progresso=_andamento
+            ),
         )
         if resultado.resumo_ia is not None and resultado.resumo_ia.invencoes:
             resultado.avisos.append(

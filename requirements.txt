@@ -15,6 +15,10 @@ yara-python>=4.5.0          # compilacao e validacao de regras YARA
 # --- Threat Intelligence ---
 mitreattack-python>=3.0.6   # MITRE ATT&CK oficial via STIX 2.x
 cvss>=3.2                   # calculo de score CVSS 3.1 / 4.0
+# Declarado de proposito, embora hoje chegue junto do mitreattack-python:
+# reports/ioc_export.py importa stix2 direto. Depender da transitividade
+# faria a exportacao quebrar no dia em que aquela dependencia mudar.
+stix2>=3.0.1,<4             # monta o bundle STIX 2.1 de indicadores
 
 # --- Enriquecimento (APIs externas) ---
 requests>=2.32.0            # clients HTTP (VirusTotal, Shodan, MalwareBazaar)

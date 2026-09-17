@@ -233,9 +233,19 @@ def test_prompt_registra_etapa_que_falhou(artefato, monkeypatch):
 
 
 class _RespostaFalsa:
-    def __init__(self, payload, status=200):
+    """
+    Dubla uma resposta do Ollama.
+
+    O /api/tags responde JSON de uma vez; o /api/generate responde em
+    streaming, uma linha de JSON por token. O duble precisa falar os dois,
+    e o fluxo precisa ser fiel ao formato real - inclusive o ultimo pedaco
+    trazendo "done": true, que e o que encerra a leitura.
+    """
+
+    def __init__(self, payload, status=200, pedacos=None):
         self._payload = payload
         self.status_code = status
+        self._pedacos = pedacos
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -243,6 +253,27 @@ class _RespostaFalsa:
 
     def json(self):
         return self._payload
+
+    def iter_lines(self, decode_unicode=False):
+        if self._pedacos is not None:
+            for linha in self._pedacos:
+                yield linha
+            return
+
+        # Sem fluxo explicito: entrega o texto inteiro num pedaco so, como
+        # faria um modelo que respondeu de primeira.
+        texto = self._payload.get("response", "")
+        yield json.dumps({"response": texto, "done": True}).encode("utf-8")
+
+
+def _fluxo(texto: str, por_pedaco: int = 5):
+    """Quebra um texto em pedacos, como o Ollama faz token a token."""
+    fatias = [texto[i : i + por_pedaco] for i in range(0, len(texto), por_pedaco)] or [""]
+    linhas = [
+        json.dumps({"response": f, "done": False}).encode("utf-8") for f in fatias
+    ]
+    linhas.append(json.dumps({"response": "", "done": True}).encode("utf-8"))
+    return linhas
 
 
 def test_servidor_fora_do_ar_da_instrucao_util(monkeypatch):
@@ -304,8 +335,9 @@ def test_temperatura_zero_e_keep_alive(monkeypatch):
 
     enviado = {}
 
-    def falso_post(url, json=None, timeout=None):
+    def falso_post(url, json=None, timeout=None, stream=None):
         enviado.update(json)
+        enviado["_stream_kwarg"] = stream
         return _RespostaFalsa({"response": "texto"})
 
     monkeypatch.setattr(requests, "post", falso_post)
@@ -313,7 +345,108 @@ def test_temperatura_zero_e_keep_alive(monkeypatch):
     ClienteOllama().gerar("prompt")
     assert enviado["options"]["temperature"] == 0
     assert enviado["keep_alive"]
-    assert enviado["stream"] is False
+
+    # O streaming nao e preferencia de apresentacao: sem ele a conexao fica
+    # muda durante toda a geracao, que em um modelo 8B passa de um minuto, e
+    # quem espera nao distingue "gerando" de "travou". Precisa estar ligado
+    # nos dois lugares - no corpo, para o Ollama mandar aos poucos, e no
+    # kwarg do requests, para a resposta nao ser bufferizada inteira antes
+    # de chegar aqui.
+    assert enviado["stream"] is True
+    assert enviado["_stream_kwarg"] is True
+
+
+def test_progresso_chega_durante_a_geracao(monkeypatch):
+    """
+    O callback precisa ser chamado ENQUANTO o modelo gera, nao so no fim.
+    Chamar uma vez no final seria inutil: o problema que ele resolve e
+    justamente o silencio durante a espera.
+    """
+    import requests
+
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *a, **k: _RespostaFalsa({}, pedacos=_fluxo("cmd.exe /c whoami", 4)),
+    )
+
+    estados = []
+    texto = ClienteOllama().gerar("prompt", progresso=estados.append)
+
+    assert texto == "cmd.exe /c whoami"
+    # Um estado por pedaco, e nenhum deles e o texto completo exceto o fim.
+    assert len(estados) > 1
+    assert estados[0].texto_parcial != texto
+    assert estados[0].concluido is False
+    assert estados[-1].concluido is True
+    assert estados[-1].texto_parcial == texto
+
+    # O texto so cresce: um estado nunca "desfaz" o anterior.
+    tamanhos = [len(e.texto_parcial) for e in estados]
+    assert tamanhos == sorted(tamanhos)
+
+
+def test_progresso_e_opcional(monkeypatch):
+    """Quem nao passa callback nao paga nada por ele."""
+    import requests
+
+    monkeypatch.setattr(
+        requests, "post", lambda *a, **k: _RespostaFalsa({}, pedacos=_fluxo("ok"))
+    )
+    assert ClienteOllama().gerar("prompt") == "ok"
+
+
+def test_resumo_do_estado_e_legivel():
+    """A linha vai para barra de status: precisa caber e dizer algo."""
+    from core.resumo_ia import EstadoGeracao
+
+    gerando = EstadoGeracao(texto_parcial="abc", pedacos=40, segundos=10.0)
+    assert "40" in gerando.resumo() and "10s" in gerando.resumo()
+    assert gerando.por_segundo == 4.0
+
+    pronto = EstadoGeracao(
+        texto_parcial="abc", pedacos=40, segundos=10.0, concluido=True
+    )
+    assert "gerado" in pronto.resumo()
+
+    # Nos primeiros instantes nao da para estimar ritmo sem mentir.
+    cedo = EstadoGeracao(texto_parcial="a", pedacos=1, segundos=0.1)
+    assert cedo.por_segundo == 0.0
+    assert "/s" not in cedo.resumo()
+
+
+def test_linha_malformada_no_fluxo_nao_derruba_a_geracao(monkeypatch):
+    """
+    Uma linha que nao e JSON no meio do fluxo nao justifica descartar tudo
+    que ja chegou.
+    """
+    import requests
+
+    pedacos = _fluxo("cmd.exe")
+    pedacos.insert(2, b"{lixo nao json")
+
+    monkeypatch.setattr(
+        requests, "post", lambda *a, **k: _RespostaFalsa({}, pedacos=pedacos)
+    )
+    assert ClienteOllama().gerar("prompt") == "cmd.exe"
+
+
+def test_erro_no_meio_do_fluxo_vira_excecao(monkeypatch):
+    """
+    Resumo cortado no meio e pior que nenhum: parece completo. Se o Ollama
+    reclama no meio do fluxo, o que chegou nao se aproveita.
+    """
+    import requests
+
+    pedacos = [
+        json.dumps({"response": "come", "done": False}).encode("utf-8"),
+        json.dumps({"error": "modelo descarregado"}).encode("utf-8"),
+    ]
+    monkeypatch.setattr(
+        requests, "post", lambda *a, **k: _RespostaFalsa({}, pedacos=pedacos)
+    )
+    with pytest.raises(ErroResumoIA, match="descarregado"):
+        ClienteOllama().gerar("prompt")
 
 
 def test_resposta_vazia_vira_erro(monkeypatch):
