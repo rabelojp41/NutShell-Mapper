@@ -228,6 +228,30 @@ def comando_analisar(args: argparse.Namespace) -> int:
         except Exception as erro:
             print(f"\n  regra YARA nao foi salva: {erro}", file=sys.stderr)
 
+    # --- Exportacao de indicadores ---
+    if args.exportar_iocs:
+        from core.string_extractor import Confianca
+        from reports import ioc_export
+
+        minima = {
+            "alta": Confianca.ALTA,
+            "media": Confianca.MEDIA,
+            "baixa": Confianca.BAIXA,
+        }[args.confianca_minima]
+
+        saidas = ioc_export.exportar(
+            resultado, args.saida, args.exportar_iocs, confianca_minima=minima
+        )
+        if saidas:
+            _secao("Indicadores exportados")
+            for formato, s in saidas.items():
+                print(f"  {formato:6} {s.exportados:3} indicadores  {s.caminho}")
+                if s.descartados_por_confianca:
+                    print(f"         {s.descartados_por_confianca} abaixo de "
+                          f"'{args.confianca_minima}' ficaram de fora")
+                for item in s.sem_representacao:
+                    print(f"         sem representacao no formato: {item}")
+
     # --- Relatorios ---
     if args.relatorio:
         gerados = report_generator.gerar(resultado, args.saida, args.relatorio)
@@ -505,6 +529,15 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--modelo-ia", default="llama3.1:8b",
         help="modelo do Ollama a usar (padrao: llama3.1:8b)",
+    )
+    p.add_argument(
+        "--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"],
+        help="exporta os indicadores para alimentar SIEM, MISP ou bloqueio",
+    )
+    p.add_argument(
+        "--confianca-minima", choices=["alta", "media", "baixa"], default="media",
+        help="corte da exportacao de indicadores (padrao: media). 'baixa' "
+             "inclui os duvidosos, que nao servem para bloqueio automatico",
     )
     p.add_argument("-q", "--quieto", action="store_true", help="sem barra de progresso")
     p.set_defaults(funcao=comando_analisar)

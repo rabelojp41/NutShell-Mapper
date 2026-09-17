@@ -464,6 +464,17 @@ modelo inventar aparece sinalizado."""
         self.botao_salvar_yara.clicked.connect(self._salvar_yara)
         layout_saida.addWidget(self.botao_salvar_yara)
 
+        self.botao_exportar_iocs = QPushButton("Exportar indicadores...")
+        self.botao_exportar_iocs.setToolTip(
+            """Exporta os indicadores em CSV, STIX 2.1 e MISP, para alimentar
+SIEM, plataforma de compartilhamento ou lista de bloqueio.
+
+So confianca alta e media sao exportadas: as de baixa existem para o
+analista julgar, e alimentariam bloqueio automatico com ruido."""
+        )
+        self.botao_exportar_iocs.clicked.connect(self._exportar_iocs)
+        layout_saida.addWidget(self.botao_exportar_iocs)
+
         layout.addWidget(grupo_saida)
         layout.addStretch()
 
@@ -516,6 +527,9 @@ modelo inventar aparece sinalizado."""
         self.botao_cancelar.setEnabled(rodando)
         self.botao_abrir.setEnabled(not rodando)
         self.botao_exportar.setEnabled(tem_resultado and not rodando)
+        self.botao_exportar_iocs.setEnabled(
+            tem_resultado and bool(self._resultado.iocs) and not rodando
+        )
         self.botao_salvar_yara.setEnabled(
             tem_resultado
             and self._resultado.regra_yara is not None
@@ -687,6 +701,60 @@ modelo inventar aparece sinalizado."""
 
         self.statusBar().showMessage(f"Relatorio salvo em {destino}")
         self._perguntar_se_abre(destino)
+
+    def _exportar_iocs(self) -> None:
+        """
+        Exporta os indicadores para alimentar SIEM, MISP ou bloqueio.
+
+        Grava os tres formatos de uma vez: sao pequenos, e adivinhar qual
+        o analista vai precisar custaria mais um dialogo.
+        """
+        if self._resultado is None:
+            return
+
+        from core.string_extractor import Confianca
+        from reports import ioc_export
+
+        destino = QFileDialog.getExistingDirectory(
+            self, "Onde salvar os indicadores", str(Path(self._resultado.caminho).parent)
+        )
+        if not destino:
+            return
+
+        saidas = ioc_export.exportar(
+            self._resultado,
+            destino,
+            ["csv", "stix", "misp"],
+            confianca_minima=Confianca.MEDIA,
+        )
+
+        if not saidas:
+            QMessageBox.warning(
+                self, "Nada exportado", "Nenhum formato pode ser gravado."
+            )
+            return
+
+        linhas = [f"{f.upper()}: {s.exportados} indicadores" for f, s in saidas.items()]
+
+        descartados = next(iter(saidas.values())).descartados_por_confianca
+        if descartados:
+            linhas += [
+                "",
+                f"{descartados} indicador(es) de confianca BAIXA ficaram de "
+                "fora. Eles existem para voce julgar, e alimentariam um "
+                "bloqueio automatico com ruido.",
+            ]
+
+        sem_representacao = [
+            item for s in saidas.values() for item in s.sem_representacao
+        ]
+        if sem_representacao:
+            linhas += ["", "Sem representacao em algum formato:"]
+            linhas += [f"  - {i}" for i in dict.fromkeys(sem_representacao)]
+
+        corpo = destino + "\n\n" + "\n".join(linhas)
+        QMessageBox.information(self, "Indicadores exportados", corpo)
+        self.statusBar().showMessage(f"Indicadores exportados em {destino}")
 
     def _salvar_yara(self) -> None:
         if self._resultado is None or self._resultado.regra_yara is None:
