@@ -480,6 +480,30 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
                 linhas.append(f"- `{v.indicador[:40]}`: {obs}")
         linhas.append("")
 
+    # --- NVD ---
+    if r.nvd:
+        linhas += ["**NVD (vulnerabilidades citadas pelo artefato)**", ""]
+        dados = [
+            [
+                n.cve,
+                n.resumo,
+                n.versao_cvss or "-",
+                n.publicada_em or "-",
+                (n.descricao[:70] + "...") if len(n.descricao) > 70 else (n.descricao or "-"),
+            ]
+            for n in r.nvd
+        ]
+        linhas.extend(
+            _tabela(["CVE", "CVSS", "Versao", "Publicada", "Descricao"], dados)
+        )
+        linhas += [
+            "",
+            "> O artefato apenas REFERENCIA estas vulnerabilidades. Se ele as "
+            "explora, e com que sucesso, a analise estatica nao determina - o "
+            "score descreve a falha, nao este arquivo.",
+            "",
+        ]
+
     # --- Shodan ---
     if r.shodan:
         linhas += ["**Shodan**", ""]

@@ -428,3 +428,148 @@ def test_cancelamento_antes_da_extracao_e_distinguivel(artefato):
     assert r.cancelado is True
     assert r.erros == []  # cancelar nao e erro
     assert any("cancelada antes da extracao" in a for a in r.avisos)
+
+
+# ============================================================
+# CVSS automatico a partir de CVE citada
+# ============================================================
+
+
+@pytest.fixture
+def artefato_com_cve(tmp_path):
+    caminho = tmp_path / "exploit.bin"
+    caminho.write_bytes(
+        b"Exploit para CVE-2021-44228\ntambem tenta CVE-2017-0144\n"
+    )
+    return caminho
+
+
+class _NVDFalso:
+    """Duble do client da NVD, com vetores reais de CVEs conhecidas."""
+
+    VETORES = {
+        "CVE-2021-44228": ("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H", 10.0),
+        "CVE-2017-0144": ("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", 8.8),
+    }
+
+    def __init__(self):
+        self.consultadas = []
+
+    def consultar(self, cve):
+        from enrichment.nvd_client import ResultadoNVD
+
+        self.consultadas.append(cve)
+        r = ResultadoNVD(cve=cve, consultado=True)
+        if cve in self.VETORES:
+            r.encontrado = True
+            r.vetor, r.score_base = self.VETORES[cve]
+            r.versao_cvss = "3.1"
+        return r
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def test_cve_citada_preenche_o_cvss_sozinha(artefato_com_cve, monkeypatch):
+    """
+    CVSS descreve uma vulnerabilidade, nao um artefato - nao ha como
+    derivar um vetor de um binario. O que da para fazer e notar que o
+    artefato REFERENCIA uma CVE e buscar o vetor oficial dela.
+    """
+    from enrichment import nvd_client
+
+    falso = _NVDFalso()
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: falso)
+
+    r = analisar(
+        artefato_com_cve,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True),
+    )
+
+    assert r.cvss is not None
+    assert r.cvss.score_base == pytest.approx(10.0)
+    assert r.cvss.cve == "CVE-2021-44228"
+
+
+def test_entre_varias_cves_vale_a_mais_severa(artefato_com_cve, monkeypatch):
+    """A mais severa define o pior caso, que e o que o relatorio destaca."""
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: _NVDFalso())
+
+    r = analisar(
+        artefato_com_cve,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True),
+    )
+
+    assert r.cvss.cve == "CVE-2021-44228"  # 10.0, e nao a de 8.8
+    assert any("mais severa" in a for a in r.avisos)
+    # As duas continuam registradas.
+    assert len(r.nvd) == 2
+
+
+def test_vetor_informado_pelo_analista_tem_precedencia(artefato_com_cve, monkeypatch):
+    """
+    Se o analista digitou um vetor, e porque sabe algo que a ferramenta nao
+    sabe. Sobrescrever seria arrogancia da ferramenta.
+    """
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(
+        nvd_client, "criar",
+        lambda *_a, **_k: pytest.fail("NVD nao deveria ser consultada"),
+    )
+
+    r = analisar(
+        artefato_com_cve,
+        OpcoesAnalise(
+            usar_floss=False, usar_stix=False, enriquecer=True,
+            vetor_cvss="CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L",
+        ),
+    )
+    assert r.cvss.score_base < 5.0  # o vetor manual, nao o 10.0 da NVD
+
+
+def test_sem_enriquecimento_nao_consulta_a_nvd(artefato_com_cve, monkeypatch):
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(
+        nvd_client, "criar",
+        lambda *_a, **_k: pytest.fail("NVD nao deveria ser consultada"),
+    )
+
+    r = analisar(artefato_com_cve, OpcoesAnalise(usar_floss=False, usar_stix=False))
+    assert r.cvss is None
+    assert r.nvd == []
+
+
+def test_artefato_sem_cve_nao_gera_consulta(artefato, monkeypatch):
+    from enrichment import nvd_client
+
+    falso = _NVDFalso()
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: falso)
+
+    analisar(artefato, OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True))
+    assert falso.consultadas == []
+
+
+def test_score_da_nvd_vem_com_a_ressalva(artefato_com_cve, monkeypatch):
+    """
+    O numero 10.0 no topo de um relatorio seria lido como "este arquivo e
+    critico". Ele descreve a falha citada, nao o artefato.
+    """
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: _NVDFalso())
+
+    r = analisar(
+        artefato_com_cve,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True),
+    )
+    assert any("nao este arquivo" in a for a in r.cvss.avisos)
+
+    texto = rg.montar_markdown(r)
+    assert "apenas REFERENCIA" in texto

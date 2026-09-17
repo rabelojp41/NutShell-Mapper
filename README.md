@@ -38,6 +38,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `core/pipeline.py` | orquestra as etapas, isola falhas e consolida o resultado |
 | `enrichment/virustotal_client.py` | lookup de hash, IP, dominio e URL. **Nao envia o arquivo** |
 | `enrichment/shodan_client.py` | portas e servicos dos IPs publicos extraidos |
+| `enrichment/nvd_client.py` | busca o vetor CVSS oficial de CVE citada pelo artefato |
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
 | `gui/` | interface desktop em PySide6 |
@@ -125,6 +126,25 @@ acao a parte:
 Baixar nunca acontece como efeito colateral de analisar um artefato: o
 pipeline so consulta por hash.
 
+### CVSS automatico
+
+O campo CVSS nao e preenchido a mao. Quando o artefato **cita uma CVE** nas
+strings - e isso e detectado offline, como um tipo de IOC proprio - o vetor
+oficial e buscado na NVD do NIST (API publica, sem chave) e o score entra no
+relatorio sozinho. Havendo mais de uma CVE, vale a mais severa; as demais
+continuam listadas.
+
+```bash
+python main.py analisar amostra.bin --enriquecer
+```
+
+A ressalva acompanha o numero em toda saida: **o score descreve a
+vulnerabilidade, nao o artefato**. Que o binario a explore, e com que
+sucesso, a analise estatica nao determina - ele apenas referencia a falha.
+
+Um vetor informado a mao tem precedencia: se o analista digitou um, e
+porque sabe algo que a ferramenta nao sabe.
+
 ### Resumo por IA local
 
 Opcional, desligado por padrao. Escreve um resumo executivo em linguagem
@@ -180,7 +200,7 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 python -m pytest
 ```
 
-400 testes, todos offline: nenhum faz requisicao de rede nem depende do
+417 testes, todos offline: nenhum faz requisicao de rede nem depende do
 bundle de ~50 MB do ATT&CK.
 
 Alguns deles rodam a emulacao real do FLOSS sobre shellcode gerado, e sao a

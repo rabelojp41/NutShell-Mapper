@@ -542,6 +542,25 @@ def aba_enriquecimento(r) -> QWidget:
                 )
             )
 
+    if r.nvd:
+        widgets.append(QLabel("<b>NVD — vulnerabilidades citadas</b>"))
+        widgets.append(
+            _tabela(
+                ["CVE", "CVSS", "Versao", "Publicada", "Descricao"],
+                [
+                    [n.cve, n.resumo, n.versao_cvss, n.publicada_em, n.descricao]
+                    for n in r.nvd
+                ],
+            )
+        )
+        widgets.append(
+            _nota(
+                "O artefato apenas REFERENCIA estas vulnerabilidades. Se ele "
+                "as explora, e com que sucesso, a analise estatica nao "
+                "determina - o score descreve a falha, nao este arquivo."
+            )
+        )
+
     if r.shodan:
         widgets.append(QLabel("<b>Shodan</b>"))
         widgets.append(

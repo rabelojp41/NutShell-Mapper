@@ -153,6 +153,8 @@ class ResultadoAnalise:
     cvss: cvss_calculator.ResultadoCVSS | None = None
     virustotal: list = field(default_factory=list)
     shodan: list = field(default_factory=list)
+    # Consultas a NVD, uma por CVE citada pelo artefato.
+    nvd: list = field(default_factory=list)
     # ResultadoMalwareBazaar, quando a consulta ocorre. O tipo nao e
     # importado para core/ nao depender de enrichment/, que so entra em
     # cena quando o enriquecimento e pedido.
@@ -246,6 +248,7 @@ class ResultadoAnalise:
 
         saida["virustotal"] = [r.to_dict() for r in self.virustotal]
         saida["shodan"] = [r.to_dict() for r in self.shodan]
+        saida["nvd"] = [r.to_dict() for r in self.nvd]
         saida["malwarebazaar"] = (
             self.malwarebazaar.to_dict() if self.malwarebazaar else None
         )
@@ -457,12 +460,25 @@ def analisar(
         )
 
     # ---------- 8. CVSS ----------
+    #
+    # Duas origens possiveis para o vetor, nesta ordem de precedencia:
+    #
+    #   1. O que o analista informou. Se ele digitou um vetor, e porque
+    #      sabe algo que a ferramenta nao sabe - nao cabe sobrescrever.
+    #   2. Busca na NVD a partir de uma CVE encontrada nas strings do
+    #      artefato. E o caso comum: o binario cita "CVE-2021-44228" e o
+    #      vetor oficial vem de graca, sem o analista precisar decorar.
+    #
+    # A segunda depende de rede, entao so acontece com enriquecimento
+    # ligado - o mesmo criterio de toda consulta externa.
 
     if opcoes.vetor_cvss:
         resultado.cvss = executor.rodar(
             Estagio.CVSS,
             lambda: cvss_calculator.calcular(opcoes.vetor_cvss, opcoes.cve),
         )
+    elif opcoes.enriquecer:
+        resultado.cvss = executor.rodar(Estagio.CVSS, lambda: _cvss_da_nvd(resultado, config))
 
     # ---------- 9. Enriquecimento externo ----------
 
@@ -501,6 +517,77 @@ def analisar(
 
     logger.info("analise concluida: %s", resultado.resumo())
     return resultado
+
+
+def _cvss_da_nvd(resultado: ResultadoAnalise, config):
+    """
+    Busca o vetor CVSS a partir de uma CVE citada pelo artefato.
+
+    Resolve a assimetria que existia: o campo CVSS era preenchimento
+    manual, o que obrigava o analista a saber o vetor de cor. Mas CVSS
+    descreve uma VULNERABILIDADE, nao um artefato - nao ha como derivar um
+    vetor de um binario. O que da para fazer, e que faltava, e notar que o
+    artefato REFERENCIA uma CVE (isso o string_extractor ja faz, offline) e
+    buscar o vetor oficial daquela CVE.
+
+    Quando ha mais de uma CVE citada, vale a de maior score: e a que define
+    o pior caso, e o relatorio precisa da mais severa em destaque. As
+    demais continuam listadas como IOC.
+
+    Returns:
+        ResultadoCVSS, ou None quando nao ha CVE citada ou a NVD nao
+        respondeu. Nao levanta excecao: o executor trata, e a ausencia de
+        CVSS nao invalida o resto da analise.
+    """
+    from core.string_extractor import TipoIOC
+    from enrichment import nvd_client
+
+    cves = [i.valor for i in resultado.iocs if i.tipo is TipoIOC.CVE]
+    if not cves:
+        return None
+
+    cliente = nvd_client.criar(config)
+    if cliente is None:
+        resultado.avisos.append(
+            "CVE citada no artefato, mas a consulta a NVD foi pulada: "
+            "enriquecimento desabilitado"
+        )
+        return None
+
+    melhor = None
+    melhor_score = -1.0
+
+    with cliente:
+        for cve in cves[:5]:  # teto: a NVD limita a 5 requisicoes por janela
+            consulta = cliente.consultar(cve)
+            resultado.nvd.append(consulta)
+
+            if not consulta.encontrado or not consulta.vetor:
+                continue
+            if consulta.score_base > melhor_score:
+                melhor_score = consulta.score_base
+                melhor = consulta
+
+    if melhor is None:
+        resultado.avisos.append(
+            f"CVE citada ({', '.join(cves[:3])}), mas a NVD nao devolveu "
+            "vetor CVSS para nenhuma delas"
+        )
+        return None
+
+    if len(cves) > 1:
+        resultado.avisos.append(
+            f"{len(cves)} CVEs citadas no artefato; o CVSS exibido e o da "
+            f"mais severa ({melhor.cve}). As demais estao na lista de IOCs"
+        )
+
+    cvss = cvss_calculator.calcular(melhor.vetor, melhor.cve)
+    cvss.avisos.append(
+        "vetor obtido automaticamente da NVD a partir de CVE citada pelo "
+        "artefato. O score descreve a vulnerabilidade, nao este arquivo: "
+        "que ele a explore, e com que sucesso, a analise estatica nao diz"
+    )
+    return cvss
 
 
 def _enriquecer(
