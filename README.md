@@ -213,10 +213,17 @@ por quem importa:
   atributo como pronto para virar regra de deteccao automatica, e isso nao
   se concede sem revisao humana.
 
-O que nao tem representacao no formato de destino - chave de registro no
-STIX, por exemplo - e reportado em vez de sumir em silencio. E falha de um
-formato nao impede os outros: ausencia da biblioteca `stix2` nao pode
-custar o CSV.
+Indicador de endpoint tambem sai no STIX, e nao so o de rede: caminho de
+arquivo vira a conjuncao `file:name AND file:parent_directory_ref.path`,
+chave de registro vira `windows-registry-key:key`, e hash embutido vira
+`file:hashes` com o algoritmo deduzido do comprimento. Chave de execucao
+automatica e dos indicadores mais acionaveis que existem para caca em
+endpoint - o RabMapper ja a mapeia para T1547.001, e deixa-la de fora da
+exportacao seria perder o achado no ultimo passo.
+
+O que ainda assim nao tem representacao no destino e reportado em vez de
+sumir em silencio. E falha de um formato nao impede os outros: ausencia da
+biblioteca `stix2` nao pode custar o CSV.
 
 Na interface grafica, o botao **Exportar indicadores...** faz o mesmo.
 

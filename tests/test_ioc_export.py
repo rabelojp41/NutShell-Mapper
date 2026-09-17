@@ -195,13 +195,80 @@ def test_relacao_da_cve_e_targets_e_nao_uses(resultado, tmp_path):
     assert all(r["relationship_type"] == "targets" for r in para_vuln)
 
 
-def test_stix_reporta_o_que_nao_tem_representacao(resultado, tmp_path):
+def test_chave_de_registro_vira_indicador_de_endpoint(resultado, tmp_path):
     """
-    Chave de registro descreve o hospedeiro, nao trafego - nao ha padrao
-    STIX de rede util. Isso precisa ser dito, nao sumir em silencio.
+    Nao ha padrao STIX de *rede* para chave de registro, mas o STIX 2.1 tem
+    um objeto proprio para ela - e chave de execucao automatica e dos
+    indicadores mais acionaveis que existem para caca em endpoint.
     """
     saida = ioc_export.exportar_stix(resultado, tmp_path / "b.json")
-    assert any("chave_registro" in s for s in saida.sem_representacao)
+    bundle = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
+
+    padroes = [o["pattern"] for o in bundle["objects"] if o["type"] == "indicator"]
+    registro = [p for p in padroes if "windows-registry-key:key" in p]
+    assert len(registro) == 1
+    assert "CurrentVersion" in registro[0]
+    assert not any("chave_registro" in s for s in saida.sem_representacao)
+
+
+def test_caminho_vira_arquivo_mais_diretorio(tmp_path):
+    """
+    O STIX separa o arquivo do diretorio que o contem. Um caminho completo
+    vira a conjuncao dos dois - e assim que OpenCTI e MISP esperam receber.
+    """
+    from core.string_extractor import IOC, TipoString
+
+    r = _resultado_com(
+        [
+            IOC(
+                valor=r"C:\Users\Public\svhost.exe",
+                tipo=TipoIOC.CAMINHO_WINDOWS,
+                confianca=Confianca.ALTA,
+                origem="x",
+                tipo_string=TipoString.STATIC,
+            )
+        ]
+    )
+
+    ioc_export.exportar_stix(r, tmp_path / "b.json")
+    bundle = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
+    padrao = next(o["pattern"] for o in bundle["objects"] if o["type"] == "indicator")
+
+    assert "file:name = 'svhost.exe'" in padrao
+    assert "file:parent_directory_ref.path" in padrao
+    assert r"C:\\Users\\Public" in padrao
+
+
+def test_barra_invertida_e_escapada(tmp_path):
+    """
+    A barra invertida e o caractere de escape do padrao STIX. Uma barra
+    solta faz o parser do stix2 recusar o padrao inteiro - e caminho
+    Windows e chave de registro sao feitos de barra invertida.
+    """
+    from stix2 import Indicator
+
+    padrao = ioc_export._padrao_de_caminho(r"C:\Windows\System32\drivers\x.sys")
+    assert "\\\\" in padrao
+
+    # A prova real: o proprio stix2 aceita o padrao produzido.
+    Indicator(pattern=padrao, pattern_type="stix", valid_from="2024-01-01T00:00:00Z")
+
+
+def test_caminho_sem_arquivo_vira_diretorio(tmp_path):
+    padrao = ioc_export._padrao_de_caminho("C:\\Users\\Public\\")
+    assert padrao.startswith("[directory:path =")
+    assert "file:name" not in padrao
+
+
+def test_stix_reporta_o_que_nao_tem_representacao(tmp_path):
+    """
+    Hexadecimal que nao e MD5, SHA1 nem SHA256 nao recebe padrao chutado:
+    fica de fora e e reportado, em vez de sumir em silencio.
+    """
+    saida = ioc_export.exportar_stix(
+        _resultado_com([_hash_ioc("abc123")]), tmp_path / "b.json"
+    )
+    assert any("abc123" in s for s in saida.sem_representacao)
 
 
 def test_confianca_vira_escala_stix(resultado, tmp_path):

@@ -21,10 +21,15 @@ baixa existem para o analista julgar - alimentar um bloqueio automatico com
 "1.1.0.14, provavel numero de versao" produziria incidente, nao defesa. O
 filtro e ajustavel, mas o padrao e conservador de proposito.
 
-Indicador de caminho de arquivo e chave de registro nao viram padrao STIX
-de rede: eles descrevem o hospedeiro, nao trafego, e um bloqueio de borda
-nao faz nada com eles. Continuam no CSV, que e descritivo, e viram
-observacao no STIX.
+Indicador de caminho de arquivo e de chave de registro descreve o
+hospedeiro, nao trafego - um bloqueio de borda nao faz nada com eles. Mas
+isso e um argumento sobre firewall, nao sobre o formato de troca: o STIX
+2.1 tem objeto proprio para os dois, e chave de execucao automatica e dos
+indicadores mais acionaveis que existem para caca em endpoint. Eles saem
+com padrao proprio, e nao como texto solto.
+
+O que sobra sem representacao num formato e reportado em
+`ResultadoExportacao.sem_representacao`, para nao sumir em silencio.
 """
 
 from __future__ import annotations
@@ -57,6 +62,7 @@ PADRAO_STIX = {
     TipoIOC.URL: "[url:value = '{valor}']",
     TipoIOC.EMAIL: "[email-addr:value = '{valor}']",
     TipoIOC.BITCOIN: "[x-cryptocurrency-wallet:address = '{valor}']",
+    TipoIOC.CHAVE_REGISTRO: "[windows-registry-key:key = '{valor}']",
 }
 
 # Hash nao entra no mapa acima porque o padrao depende do valor, nao do
@@ -74,6 +80,50 @@ HASH_STIX = {"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256"}
 def _algoritmo_do_hash(valor: str) -> str | None:
     """Deduz o algoritmo pelo comprimento. None quando nao reconhece."""
     return ALGORITMO_POR_COMPRIMENTO.get(len(valor.strip()))
+
+
+def _escapar_stix(valor: str) -> str:
+    """
+    Escapa um valor para dentro de um literal de padrao STIX.
+
+    Dois caracteres precisam disso: a aspa simples, que fecharia o literal,
+    e a barra invertida, que e o proprio caractere de escape. Isso nao era
+    visivel enquanto o STIX so levava indicador de rede - mas caminho
+    Windows e chave de registro sao feitos de barra invertida, e o parser
+    do stix2 recusa o padrao inteiro quando encontra uma solta.
+
+    A ordem importa: a barra primeiro. Ao contrario, as barras introduzidas
+    pelo escape da aspa seriam escapadas de novo.
+    """
+    return valor.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _padrao_de_caminho(valor: str) -> str:
+    """
+    Monta o padrao STIX de um caminho de arquivo.
+
+    O STIX separa o arquivo do diretorio que o contem, entao um caminho
+    completo vira a conjuncao dos dois - e assim que OpenCTI e MISP
+    esperam receber. Caminho que termina em separador nao tem componente de
+    arquivo e vira so o diretorio.
+    """
+    limpo = valor.rstrip()
+    diretorio, separador, arquivo = limpo.rpartition("\\")
+
+    if not separador:
+        # Sem separador nenhum: e um nome de arquivo solto.
+        return "[file:name = '" + _escapar_stix(limpo) + "']"
+
+    if not arquivo:
+        return "[directory:path = '" + _escapar_stix(diretorio) + "']"
+
+    return (
+        "[file:name = '"
+        + _escapar_stix(arquivo)
+        + "' AND file:parent_directory_ref.path = '"
+        + _escapar_stix(diretorio)
+        + "']"
+    )
 
 # Tipo de IOC -> tipo de atributo no MISP.
 ATRIBUTO_MISP = {
@@ -293,22 +343,25 @@ def exportar_stix(
                 continue
             # O STIX escreve o nome do algoritmo entre aspas dentro do
             # padrao, e ele e case-sensitive na forma hifenizada.
-            modelo = (
-                "[file:hashes.'" + HASH_STIX[algoritmo] + "' = '{valor}']"
+            padrao = (
+                "[file:hashes.'"
+                + HASH_STIX[algoritmo]
+                + "' = '"
+                + _escapar_stix(i.valor)
+                + "']"
             )
+        elif i.tipo in (TipoIOC.CAMINHO_WINDOWS, TipoIOC.CAMINHO_UNC):
+            padrao = _padrao_de_caminho(i.valor)
         else:
             modelo = PADRAO_STIX.get(i.tipo)
-
-        if modelo is None:
-            sem_representacao.append(f"{i.tipo.value}: {i.valor}")
-            continue
-
-        # Aspas simples no valor quebrariam o padrao STIX.
-        valor = i.valor.replace("'", "\\'")
+            if modelo is None:
+                sem_representacao.append(f"{i.tipo.value}: {i.valor}")
+                continue
+            padrao = modelo.format(valor=_escapar_stix(i.valor))
 
         indicador = Indicator(
             name=f"{i.tipo.value}: {i.valor[:60]}",
-            pattern=modelo.format(valor=valor),
+            pattern=padrao,
             pattern_type="stix",
             valid_from=_agora(),
             description=(
