@@ -34,6 +34,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `core/killchain.py` | agrupa as tecnicas nos 7 estagios da Cyber Kill Chain |
 | `core/group_attribution.py` | cruza as tecnicas com os intrusion-sets, ponderando pela raridade de cada tecnica |
 | `core/cvss_calculator.py` | score CVSS 3.1 (base, temporal e ambiental) |
+| `core/resumo_ia.py` | resumo executivo por LLM **local** (Ollama), com verificacao automatica contra os achados |
 | `core/pipeline.py` | orquestra as etapas, isola falhas e consolida o resultado |
 | `enrichment/virustotal_client.py` | lookup de hash, IP, dominio e URL. **Nao envia o arquivo** |
 | `enrichment/shodan_client.py` | portas e servicos dos IPs publicos extraidos |
@@ -124,6 +125,38 @@ acao a parte:
 Baixar nunca acontece como efeito colateral de analisar um artefato: o
 pipeline so consulta por hash.
 
+### Resumo por IA local
+
+Opcional, desligado por padrao. Escreve um resumo executivo em linguagem
+natural a partir dos achados, usando um modelo rodando no **Ollama em
+localhost** - nenhum dado sai da maquina, diferente do VirusTotal e do
+Shodan.
+
+```bash
+ollama pull llama3.1:8b
+```
+
+```bash
+python main.py analisar amostra.bin --resumo-ia
+```
+
+O ponto do modulo nao e gerar texto, e **tornar o texto conferivel**. Um
+LLM e estruturalmente propenso a afirmar mais do que a evidencia sustenta -
+exatamente o oposto da regra que rege o resto do projeto. Por isso:
+
+- O modelo recebe **apenas achados estruturados**, nunca strings cruas nem
+  bytes do artefato.
+- Toda afirmacao verificavel do texto e conferida contra a analise: cada ID
+  de tecnica, IOC, nome de grupo e familia de malware citado tem que existir
+  no que foi observado.
+- O que o modelo inventar e **detectado e listado** junto do texto. O resumo
+  nao e escondido - esconder impediria ver o erro - mas nunca aparece sem o
+  aviso.
+- O resumo nunca substitui secao de evidencia. E texto de apoio.
+
+Mesmo espirito da regra YARA, que e testada contra a propria amostra antes
+de ser considerada valida.
+
 ### Shellcode
 
 Artefato sem cabecalho de PE - beacon extraido, payload de exploit, dropper
@@ -147,7 +180,7 @@ ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
 python -m pytest
 ```
 
-365 testes, todos offline: nenhum faz requisicao de rede nem depende do
+400 testes, todos offline: nenhum faz requisicao de rede nem depende do
 bundle de ~50 MB do ATT&CK.
 
 Alguns deles rodam a emulacao real do FLOSS sobre shellcode gerado, e sao a

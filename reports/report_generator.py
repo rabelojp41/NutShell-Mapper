@@ -502,6 +502,45 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
     return Secao("Enriquecimento", linhas)
 
 
+def _secao_resumo_ia(r: ResultadoAnalise) -> Secao:
+    """
+    Resumo em linguagem natural, gerado por LLM local.
+
+    Vem depois do sumario de numeros e antes das secoes de evidencia: e
+    apoio a leitura, nao fonte. Toda afirmacao verificavel dele foi
+    conferida contra os achados, e o que nao tem respaldo aparece listado
+    logo abaixo do texto - nunca escondido, porque esconder impediria o
+    analista de ver o erro.
+    """
+    if r.resumo_ia is None:
+        return Secao("Resumo por IA", [])
+
+    linhas = ["### Leitura assistida por IA", ""]
+
+    if not r.resumo_ia.gerado:
+        linhas.append(
+            f"Nao gerado: {r.resumo_ia.erro or 'motivo desconhecido'}"
+        )
+        return Secao("Resumo por IA", linhas)
+
+    linhas += [r.resumo_ia.texto, "", f"> {r.resumo_ia.ressalva}"]
+
+    if r.resumo_ia.invencoes:
+        linhas += [
+            "",
+            "**Afirmacoes do texto acima sem respaldo nos achados:**",
+            "",
+        ]
+        linhas.extend(f"- `{i.valor}` ({i.tipo}) — {i.explicacao}" for i in r.resumo_ia.invencoes)
+        linhas += [
+            "",
+            "> Estas afirmacoes foram detectadas automaticamente comparando o "
+            "texto com o que a analise observou. Desconsidere-as.",
+        ]
+
+    return Secao("Resumo por IA", linhas)
+
+
 def _secao_limitacoes(r: ResultadoAnalise) -> Secao:
     """
     O que nao foi analisado.
@@ -553,6 +592,7 @@ def montar_markdown(r: ResultadoAnalise) -> str:
 
     secoes = [
         _secao_sumario(r),
+        _secao_resumo_ia(r),
         _secao_identificacao(r),
         _secao_iocs(r),
         _secao_desofuscacao(r),

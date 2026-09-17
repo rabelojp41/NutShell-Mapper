@@ -355,6 +355,41 @@ class JanelaPrincipal(QMainWindow):
 
         layout.addWidget(grupo_rede)
 
+        # --- Resumo por IA ---
+        #
+        # Grupo separado do enriquecimento de proposito: o Ollama roda em
+        # localhost e NAO envia nada para fora, ao contrario do VirusTotal
+        # e do Shodan. Junta-los sugeriria que compartilham o mesmo risco.
+        grupo_ia = QGroupBox("Leitura assistida por IA")
+        layout_ia = QVBoxLayout(grupo_ia)
+
+        self.resumo_ia = QCheckBox("Gerar resumo com LLM local")
+        self.resumo_ia.setChecked(False)
+        self.resumo_ia.setToolTip(
+            """Escreve um resumo executivo a partir dos achados, usando o Ollama.
+
+Roda inteiramente em localhost: nenhum dado sai desta maquina.
+Toda afirmacao do texto e conferida contra os achados, e o que o
+modelo inventar aparece sinalizado."""
+        )
+        layout_ia.addWidget(self.resumo_ia)
+
+        self.campo_modelo_ia = QLineEdit("llama3.1:8b")
+        self.campo_modelo_ia.setPlaceholderText("modelo do Ollama")
+        layout_ia.addWidget(self.campo_modelo_ia)
+
+        rotulo_ia = QLabel(
+            "Local, via Ollama. A primeira geracao carrega o modelo e pode "
+            "levar alguns minutos."
+        )
+        rotulo_ia.setWordWrap(True)
+        rotulo_ia.setStyleSheet(
+            f"QLabel {{ color: {_cinza()}; font-size: 11px; }}"
+        )
+        layout_ia.addWidget(rotulo_ia)
+
+        layout.addWidget(grupo_ia)
+
         # --- MalwareBazaar ---
         #
         # Fica num grupo proprio, e nao junto do enriquecimento, porque
@@ -560,6 +595,8 @@ class JanelaPrincipal(QMainWindow):
             vetor_cvss=self.campo_cvss.text().strip(),
             cve=self.campo_cve.text().strip(),
             enriquecer=self.enriquecer.isChecked(),
+            resumo_ia=self.resumo_ia.isChecked(),
+            modelo_ia=self.campo_modelo_ia.text().strip() or "llama3.1:8b",
         )
 
         self.progresso.setValue(0)

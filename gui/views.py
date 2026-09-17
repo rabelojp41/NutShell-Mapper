@@ -572,6 +572,68 @@ def aba_enriquecimento(r) -> QWidget:
     return _pagina(*widgets)
 
 
+def aba_resumo_ia(r) -> QWidget:
+    """
+    Resumo em linguagem natural, gerado pelo LLM local.
+
+    O texto aparece sempre que foi gerado - inclusive quando contem
+    invencao. Esconder impediria o analista de ver o erro; o que nao pode
+    e ele aparecer sem o aviso do que foi inventado, entao a lista de
+    afirmacoes sem respaldo fica logo abaixo, em destaque.
+    """
+    if r.resumo_ia is None:
+        return _vazio(
+            """Resumo por IA nao foi solicitado.
+
+Marque a opcao no painel a esquerda para gerar. O modelo roda localmente
+via Ollama: nenhum dado sai desta maquina."""
+        )
+
+    if not r.resumo_ia.gerado:
+        return _vazio(
+            f"""Resumo por IA nao gerado.
+
+{r.resumo_ia.erro}"""
+        )
+
+    texto = QLabel(r.resumo_ia.texto)
+    texto.setWordWrap(True)
+    texto.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    texto.setStyleSheet("QLabel { line-height: 165%; padding: 4px; }")
+
+    widgets: list[QWidget] = [texto, _nota(r.resumo_ia.ressalva)]
+
+    if r.resumo_ia.invencoes:
+        alerta = QLabel(
+            f"<b>{len(r.resumo_ia.invencoes)} afirmacao(oes) do texto acima "
+            "nao correspondem a nenhum achado desta analise.</b><br>"
+            "Foram detectadas comparando o texto com o que foi observado. "
+            "Desconsidere-as."
+        )
+        alerta.setWordWrap(True)
+        alerta.setStyleSheet(
+            f"QLabel {{ color: {ESCURO_OU_CLARO().perigo};"
+            f" background: {fundo_de_nota()}; border-left: 3px solid"
+            f" {ESCURO_OU_CLARO().perigo}; padding: 8px 12px; }}"
+        )
+        widgets.append(alerta)
+        widgets.append(
+            _tabela(
+                ["Tipo", "Valor citado", "Por que nao confere"],
+                [[i.tipo, i.valor, i.explicacao] for i in r.resumo_ia.invencoes],
+            )
+        )
+
+    rodape = QLabel(
+        f"Gerado por {r.resumo_ia.modelo} em "
+        f"{r.resumo_ia.duracao_segundos:.1f}s, localmente."
+    )
+    rodape.setStyleSheet(f"QLabel {{ color: {cor_secundaria()}; font-size: 11px; }}")
+    widgets.append(rodape)
+
+    return _pagina(*widgets)
+
+
 def aba_limitacoes(r) -> QWidget:
     """
     O que nao foi analisado.
@@ -617,5 +679,6 @@ ABAS = (
     ("Atribuicao", aba_atribuicao),
     ("YARA", aba_yara),
     ("Enriquecimento", aba_enriquecimento),
+    ("Resumo IA", aba_resumo_ia),
     ("Limitacoes", aba_limitacoes),
 )

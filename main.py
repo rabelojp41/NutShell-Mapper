@@ -138,6 +138,14 @@ def _imprimir_resultado(r) -> None:
         for linha in resumir_em_texto(r.cvss).splitlines():
             print(f"  {linha}")
 
+    # --- Resumo por IA ---
+    if r.resumo_ia is not None:
+        from core.resumo_ia import resumir_em_texto
+
+        _secao("Leitura assistida por IA")
+        for linha in resumir_em_texto(r.resumo_ia).splitlines():
+            print(f"  {linha}")
+
     # --- Enriquecimento ---
     if r.virustotal:
         _secao("VirusTotal")
@@ -191,6 +199,8 @@ def comando_analisar(args: argparse.Namespace) -> int:
         cve=args.cve or "",
         enriquecer=args.enriquecer,
         maximo_de_consultas=args.max_consultas,
+        resumo_ia=args.resumo_ia,
+        modelo_ia=args.modelo_ia,
     )
 
     if args.enriquecer:
@@ -487,6 +497,15 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--max-consultas", type=int, default=20,
                    help="teto de consultas externas (padrao: 20)")
+    p.add_argument(
+        "--resumo-ia", action="store_true",
+        help="gera um resumo executivo com LLM local via Ollama. Roda em "
+             "localhost: nenhum dado sai da maquina",
+    )
+    p.add_argument(
+        "--modelo-ia", default="llama3.1:8b",
+        help="modelo do Ollama a usar (padrao: llama3.1:8b)",
+    )
     p.add_argument("-q", "--quieto", action="store_true", help="sem barra de progresso")
     p.set_defaults(funcao=comando_analisar)
 

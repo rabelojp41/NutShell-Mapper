@@ -40,6 +40,7 @@ from core import (
     string_extractor,
     yara_generator,
 )
+from core import resumo_ia as resumo_ia_mod
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class Estagio(str, Enum):
     VIRUSTOTAL = "Consulta ao VirusTotal"
     SHODAN = "Consulta ao Shodan"
     MALWAREBAZAAR = "Consulta ao MalwareBazaar"
+    RESUMO_IA = "Resumo por IA local"
     CONCLUIDO = "Concluido"
 
 
@@ -97,6 +99,13 @@ class OpcoesAnalise:
     # esta sendo investigado, e isso precisa ser escolha consciente.
     enriquecer: bool = False
     maximo_de_consultas: int = 20
+
+    # --- Resumo por LLM local ---
+    # Roda no Ollama em localhost: nenhum dado sai da maquina. Ainda assim
+    # e opcional, porque depende de um servico externo ao processo estar
+    # de pe e custa tempo de geracao.
+    resumo_ia: bool = False
+    modelo_ia: str = "llama3.1:8b"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -148,6 +157,7 @@ class ResultadoAnalise:
     # importado para core/ nao depender de enrichment/, que so entra em
     # cena quando o enriquecimento e pedido.
     malwarebazaar: object | None = None
+    resumo_ia: resumo_ia_mod.ResumoIA | None = None
 
     erros: list[ErroDeEstagio] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
@@ -229,7 +239,7 @@ class ResultadoAnalise:
 
         for nome in (
             "extracao", "info_pe", "desofuscacao", "regra_yara",
-            "mapeamento", "kill_chain", "atribuicao", "cvss",
+            "mapeamento", "kill_chain", "atribuicao", "cvss", "resumo_ia",
         ):
             objeto = getattr(self, nome)
             saida[nome] = objeto.to_dict() if objeto is not None else None
@@ -343,6 +353,7 @@ def analisar(
             opcoes.enriquecer,
             opcoes.enriquecer,
             opcoes.enriquecer,
+            opcoes.resumo_ia,
         )
     )
     executor = _Executor(resultado, progresso, cancelado, total)
@@ -462,6 +473,22 @@ def analisar(
             "enriquecimento externo desabilitado: nenhum dado foi enviado a "
             "servico de terceiros"
         )
+
+    # ---------- 10. Resumo por IA local ----------
+    #
+    # Por ultimo de proposito: ele resume o que todas as etapas anteriores
+    # produziram, entao precisa delas concluidas.
+
+    if opcoes.resumo_ia:
+        resultado.resumo_ia = executor.rodar(
+            Estagio.RESUMO_IA,
+            lambda: resumo_ia_mod.gerar_resumo(resultado, modelo=opcoes.modelo_ia),
+        )
+        if resultado.resumo_ia is not None and resultado.resumo_ia.invencoes:
+            resultado.avisos.append(
+                f"o resumo por IA contem {len(resultado.resumo_ia.invencoes)} "
+                "afirmacao(oes) sem respaldo nos achados; veja a secao do resumo"
+            )
 
     # ---------- Encerramento ----------
 
