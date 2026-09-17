@@ -165,14 +165,25 @@ def folha_de_estilo() -> str:
 
     return f"""
 /* ---------- Base ---------- */
+/*
+   Nao pintar fundo no seletor QWidget generico. Ele atinge TODO widget,
+   inclusive QCheckBox e QLabel, que passam a desenhar um retangulo com a
+   cor de fundo da janela por cima do card mais claro em que estao - o
+   efeito e uma caixa escura atras de cada checkbox. Cor de fundo so onde
+   ela e realmente desejada.
+*/
 QWidget {{
-    background-color: {p.fundo};
     color: {p.texto};
     font-size: 13px;
 }}
 
-QMainWindow, QDialog {{
+QMainWindow, QDialog, QScrollArea > QWidget > QWidget {{
     background-color: {p.fundo};
+}}
+
+/* Widgets que apenas se apoiam no fundo de quem os contem. */
+QLabel, QCheckBox, QRadioButton, QGroupBox::title {{
+    background: transparent;
 }}
 
 QToolTip {{
@@ -321,17 +332,33 @@ QCheckBox {{
     padding: {e['xs']}px 0;
 }}
 
+/*
+   O indicador marcado usa um SVG embutido com o "check" desenhado. Sem
+   isso, dar background-color ao ::indicator substitui o desenho nativo do
+   Qt e o resultado e um quadrado azul solido, sem marca nenhuma - o
+   usuario ve "ligado" pela cor, mas perde o simbolo que torna o estado
+   obvio.
+*/
 QCheckBox::indicator {{
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
     border: 1px solid {p.borda};
     border-radius: {RAIO_PEQUENO}px;
     background-color: {p.fundo};
 }}
 
+QCheckBox::indicator:hover {{
+    border-color: {p.destaque};
+}}
+
 QCheckBox::indicator:checked {{
     background-color: {p.destaque};
     border-color: {p.destaque};
+    image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' \
+viewBox='0 0 16 16'><path d='M3.5 8.5l3 3 6-7' fill='none' \
+stroke='white' stroke-width='2' stroke-linecap='round' \
+stroke-linejoin='round'/></svg>");
 }}
 
 /* ---------- Abas ---------- */
