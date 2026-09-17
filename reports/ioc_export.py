@@ -59,6 +59,22 @@ PADRAO_STIX = {
     TipoIOC.BITCOIN: "[x-cryptocurrency-wallet:address = '{valor}']",
 }
 
+# Hash nao entra no mapa acima porque o padrao depende do valor, nao do
+# tipo: o extrator classifica MD5, SHA1 e SHA256 todos como TipoIOC.HASH, e
+# e o comprimento que diz qual e qual. Exportar um SHA256 rotulado como MD5
+# faz o MISP recusar o atributo na importacao - ele valida o valor contra o
+# tipo declarado - e faz o padrao STIX nunca casar.
+ALGORITMO_POR_COMPRIMENTO = {32: "md5", 40: "sha1", 64: "sha256"}
+
+# Nome do algoritmo como o STIX 2.1 o escreve (hifenizado) e como o MISP o
+# escreve (nome do tipo de atributo).
+HASH_STIX = {"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256"}
+
+
+def _algoritmo_do_hash(valor: str) -> str | None:
+    """Deduz o algoritmo pelo comprimento. None quando nao reconhece."""
+    return ALGORITMO_POR_COMPRIMENTO.get(len(valor.strip()))
+
 # Tipo de IOC -> tipo de atributo no MISP.
 ATRIBUTO_MISP = {
     TipoIOC.IPV4: ("ip-dst", "Network activity"),
@@ -69,7 +85,8 @@ ATRIBUTO_MISP = {
     TipoIOC.CAMINHO_WINDOWS: ("filename", "Artifacts dropped"),
     TipoIOC.CAMINHO_UNC: ("filename", "Artifacts dropped"),
     TipoIOC.CHAVE_REGISTRO: ("regkey", "Persistence mechanism"),
-    TipoIOC.HASH: ("md5", "Payload delivery"),
+    # TipoIOC.HASH e resolvido em _algoritmo_do_hash: o tipo do atributo
+    # depende do comprimento do valor, nao do tipo do IOC.
     TipoIOC.BITCOIN: ("btc", "Financial fraud"),
     TipoIOC.CVE: ("vulnerability", "External analysis"),
 }
@@ -267,7 +284,21 @@ def exportar_stix(
             )
             continue
 
-        modelo = PADRAO_STIX.get(i.tipo)
+        if i.tipo is TipoIOC.HASH:
+            algoritmo = _algoritmo_do_hash(i.valor)
+            if algoritmo is None:
+                sem_representacao.append(
+                    f"{i.tipo.value}: {i.valor} (comprimento nao reconhecido)"
+                )
+                continue
+            # O STIX escreve o nome do algoritmo entre aspas dentro do
+            # padrao, e ele e case-sensitive na forma hifenizada.
+            modelo = (
+                "[file:hashes.'" + HASH_STIX[algoritmo] + "' = '{valor}']"
+            )
+        else:
+            modelo = PADRAO_STIX.get(i.tipo)
+
         if modelo is None:
             sem_representacao.append(f"{i.tipo.value}: {i.valor}")
             continue
@@ -356,7 +387,17 @@ def exportar_misp(
         )
 
     for i in iocs:
-        mapeado = ATRIBUTO_MISP.get(i.tipo)
+        if i.tipo is TipoIOC.HASH:
+            algoritmo = _algoritmo_do_hash(i.valor)
+            if algoritmo is None:
+                sem_representacao.append(
+                    f"{i.tipo.value}: {i.valor} (comprimento nao reconhecido)"
+                )
+                continue
+            mapeado = (algoritmo, "Payload delivery")
+        else:
+            mapeado = ATRIBUTO_MISP.get(i.tipo)
+
         if mapeado is None:
             sem_representacao.append(f"{i.tipo.value}: {i.valor}")
             continue

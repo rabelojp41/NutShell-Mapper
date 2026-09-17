@@ -41,6 +41,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `enrichment/nvd_client.py` | busca o vetor CVSS oficial de CVE citada pelo artefato |
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
+| `reports/ioc_export.py` | exporta os indicadores em CSV, STIX 2.1 e evento MISP |
 | `gui/` | interface desktop em PySide6 |
 | `main.py` | linha de comando |
 
@@ -100,7 +101,9 @@ Outros comandos:
 Opcoes uteis do `analisar`: `--sem-floss` (bem mais rapido, so strings
 estaticas), `--sem-stix` (offline), `--benigno arquivo.exe` (testa a regra
 YARA contra um binario legitimo), `--enriquecer` (consulta VirusTotal e
-Shodan), `--formato sc32|sc64` (forca a arquitetura de um shellcode).
+Shodan), `--formato sc32|sc64` (forca a arquitetura de um shellcode),
+`--exportar-iocs csv stix misp` (indicadores em formato consumivel por
+outras ferramentas).
 
 ### MalwareBazaar
 
@@ -176,6 +179,46 @@ exatamente o oposto da regra que rege o resto do projeto. Por isso:
 
 Mesmo espirito da regra YARA, que e testada contra a propria amostra antes
 de ser considerada valida.
+
+### Exportacao de indicadores
+
+O relatorio serve para uma pessoa ler. Um indicador so vira defesa quando
+chega a um bloqueio, a uma regra de SIEM ou a uma plataforma de
+compartilhamento - e para isso ele precisa sair em formato que a maquina
+do outro lado entenda.
+
+```bash
+python main.py analisar amostra.bin --exportar-iocs csv stix misp
+```
+
+| Formato | Para que serve |
+|---|---|
+| `csv` | o denominador comum: abre em planilha, importa em qualquer SIEM, cola numa lista de bloqueio. Leva todos os tipos de indicador |
+| `stix` | bundle STIX 2.1, o padrao de troca de CTI (OASIS) que MISP, OpenCTI e feeds comerciais falam entre si |
+| `misp` | JSON de evento, para importacao direta no MISP |
+
+**Confianca baixa nao e exportada por padrao.** Ela existe para o analista
+julgar; alimentar um bloqueio automatico com "1.1.0.14, provavel numero de
+versao" produziria incidente, nao defesa. Para afrouxar o corte:
+`--confianca-minima baixa`. Para so o inequivoco: `--confianca-minima alta`.
+
+Tres decisoes de modelagem que fazem o bundle ser entendido corretamente
+por quem importa:
+
+- **CVE vira `Vulnerability`, nao `Indicator`.** Indicador e padrao que se
+  procura em telemetria, e um numero de CVE nao se detecta numa rede.
+- **A relacao com o artefato e `targets`, nao `uses`.** `uses` afirmaria
+  exploracao comprovada, que analise estatica nao estabelece.
+- **No MISP, so confianca alta recebe `to_ids`.** Esse campo marca o
+  atributo como pronto para virar regra de deteccao automatica, e isso nao
+  se concede sem revisao humana.
+
+O que nao tem representacao no formato de destino - chave de registro no
+STIX, por exemplo - e reportado em vez de sumir em silencio. E falha de um
+formato nao impede os outros: ausencia da biblioteca `stix2` nao pode
+custar o CSV.
+
+Na interface grafica, o botao **Exportar indicadores...** faz o mesmo.
 
 ### Shellcode
 

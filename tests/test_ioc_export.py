@@ -264,12 +264,15 @@ def test_misp_so_marca_to_ids_em_confianca_alta(resultado, tmp_path):
     """
     `to_ids` marca o atributo como pronto para virar regra de deteccao
     automatica. So confianca alta merece isso sem revisao humana.
+
+    A unica excecao e o hash do proprio artefato, que nao vem da extracao:
+    ele identifica a amostra e e sempre inequivoco.
     """
     ioc_export.exportar_misp(resultado, tmp_path / "e.json")
     evento = json.loads((tmp_path / "e.json").read_text(encoding="utf-8"))
 
     for atributo in evento["Event"]["Attribute"]:
-        if atributo["to_ids"] and atributo["type"] != "sha256":
+        if atributo["to_ids"] and not atributo["comment"].startswith("Artefato"):
             assert "confianca alta" in atributo["comment"]
 
 
@@ -278,9 +281,81 @@ def test_misp_inclui_o_hash_do_artefato(resultado, tmp_path):
     ioc_export.exportar_misp(resultado, tmp_path / "e.json")
     evento = json.loads((tmp_path / "e.json").read_text(encoding="utf-8"))
 
-    hashes = [a for a in evento["Event"]["Attribute"] if a["type"] == "sha256"]
+    hashes = [
+        a
+        for a in evento["Event"]["Attribute"]
+        if a["comment"].startswith("Artefato analisado")
+    ]
     assert len(hashes) == 1
+    assert hashes[0]["type"] == "sha256"
     assert hashes[0]["value"] == resultado.sha256
+
+
+# ============================================================
+# Hash embutido: o algoritmo vem do comprimento, nao do tipo
+# ============================================================
+
+
+def _resultado_com(iocs):
+    """Monta um ResultadoAnalise minimo em torno de uma lista de IOCs."""
+    r = ResultadoAnalise(caminho="amostra.bin")
+    r.extracao = type("E", (), {"sha256": "a" * 64, "iocs": list(iocs)})()
+    return r
+
+
+def _hash_ioc(valor):
+    from core.string_extractor import IOC, TipoString
+
+    return IOC(
+        valor=valor,
+        tipo=TipoIOC.HASH,
+        confianca=Confianca.ALTA,
+        origem="hash embutido",
+        tipo_string=TipoString.STATIC,
+    )
+
+
+@pytest.mark.parametrize(
+    "valor, tipo_misp, nome_stix",
+    [
+        ("d41d8cd98f00b204e9800998ecf8427e", "md5", "MD5"),
+        ("da39a3ee5e6b4b0d3255bfef95601890afd80709", "sha1", "SHA-1"),
+        ("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256", "SHA-256"),
+    ],
+)
+def test_hash_sai_com_o_algoritmo_certo(valor, tipo_misp, nome_stix, tmp_path):
+    """
+    O extrator classifica MD5, SHA1 e SHA256 todos como TipoIOC.HASH - o
+    comprimento e que diz qual e qual. Rotular um SHA256 como MD5 faz o
+    MISP recusar o atributo na importacao, porque ele valida o valor contra
+    o tipo declarado, e faz o padrao STIX nunca casar.
+    """
+    r = _resultado_com([_hash_ioc(valor)])
+
+    ioc_export.exportar_misp(r, tmp_path / "e.json")
+    evento = json.loads((tmp_path / "e.json").read_text(encoding="utf-8"))
+    embutido = [a for a in evento["Event"]["Attribute"] if a["value"] == valor]
+    assert len(embutido) == 1
+    assert embutido[0]["type"] == tipo_misp
+
+    ioc_export.exportar_stix(r, tmp_path / "b.json")
+    bundle = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
+    padroes = [o["pattern"] for o in bundle["objects"] if o["type"] == "indicator"]
+    assert padroes == [f"[file:hashes.'{nome_stix}' = '{valor}']"]
+
+
+def test_hash_de_comprimento_estranho_e_reportado(tmp_path):
+    """
+    Um hexadecimal que nao e MD5, SHA1 nem SHA256 nao vira atributo com
+    tipo chutado: sai da exportacao e e reportado.
+    """
+    r = _resultado_com([_hash_ioc("abc123")])
+
+    saida = ioc_export.exportar_misp(r, tmp_path / "e.json")
+    assert any("abc123" in s for s in saida.sem_representacao)
+
+    evento = json.loads((tmp_path / "e.json").read_text(encoding="utf-8"))
+    assert all(a["value"] != "abc123" for a in evento["Event"]["Attribute"])
 
 
 # ============================================================
