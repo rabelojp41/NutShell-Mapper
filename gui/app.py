@@ -48,6 +48,18 @@ from PySide6.QtWidgets import (
 )
 
 from core.pipeline import OpcoesAnalise
+from gui.estilo import (
+    AVISO,
+    BOTAO_PERIGO,
+    BOTAO_PRIMARIO,
+    CABECALHO_SECAO,
+    ESPACO,
+    NOTA,
+    RAIO,
+    SUBTITULO,
+    TITULO,
+    paleta,
+)
 from gui.views import ABAS
 from gui.worker import ExecutorDeAnalise
 
@@ -59,6 +71,21 @@ def _cinza() -> str:
     from gui.views import cor_secundaria
 
     return cor_secundaria()
+
+
+def _centralizado(widget: QWidget) -> QHBoxLayout:
+    """
+    Centraliza um widget de largura limitada.
+
+    Alinhamento central do QLabel centraliza o texto dentro do rotulo, mas
+    o rotulo continua ocupando a largura toda. Para respeitar o
+    setMaximumWidth e preciso o estica-dos-lados.
+    """
+    linha = QHBoxLayout()
+    linha.addStretch(1)
+    linha.addWidget(widget)
+    linha.addStretch(1)
+    return linha
 
 
 class AreaDeArquivo(QLabel):
@@ -73,18 +100,30 @@ class AreaDeArquivo(QLabel):
         self._limpar()
 
     def _limpar(self) -> None:
-        self.setText("Arraste um artefato aqui, ou use Abrir")
+        p = paleta()
+        self.setText("Arraste um artefato aqui\nou use Abrir")
         self.setStyleSheet(
-            "QLabel { border: 2px dashed #9aa0a6; border-radius: 6px;"
-            " color: #5f6368; padding: 12px; }"
+            f"QLabel {{ border: 2px dashed {p.borda}; border-radius: {RAIO}px;"
+            f" color: {p.texto_apagado}; background: {p.superficie};"
+            f" padding: 16px; }}"
         )
 
     def mostrar_arquivo(self, caminho: Path) -> None:
+        p = paleta()
         tamanho = caminho.stat().st_size if caminho.is_file() else 0
-        self.setText(f"{caminho.name}\n{tamanho:,} bytes\n{caminho.parent}")
+        self.setText(
+            f"<b>{caminho.name}</b><br>"
+            f"<span style='font-size:11px'>{tamanho:,} bytes</span>"
+        )
+        # O caminho completo cabe melhor na dica do que na caixa.
+        self.setToolTip(str(caminho))
+
+        # Fundo translucido funciona sobre claro e sobre escuro; azul-claro
+        # fixo ficaria ilegivel no tema escuro.
         self.setStyleSheet(
-            "QLabel { border: 2px solid #1a73e8; border-radius: 6px;"
-            " background: #e8f0fe; color: #174ea6; padding: 12px; }"
+            f"QLabel {{ border: 2px solid {p.destaque}; border-radius: {RAIO}px;"
+            f" background: {p.destaque_fraco}; color: {p.texto};"
+            f" padding: 16px; }}"
         )
 
     # --- Arrastar e soltar ---
@@ -133,12 +172,19 @@ class JanelaPrincipal(QMainWindow):
         # Sem area rolavel, os controles de baixo - exportar relatorio,
         # salvar YARA - simplesmente somem, sem nenhum indicio de que
         # existem.
+        painel = self._painel_esquerdo()
         rolagem = QScrollArea()
-        rolagem.setWidget(self._painel_esquerdo())
+        rolagem.setWidget(painel)
         rolagem.setWidgetResizable(True)
         rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        rolagem.setMinimumWidth(320)
         divisor.addWidget(rolagem)
+
+        # A largura vem do que o painel realmente pede, e nao de um numero
+        # fixo. Fonte de sistema maior, outro idioma ou tema com mais
+        # espacamento mudam essa necessidade - e como nao ha barra
+        # horizontal, o que nao cabe some sem deixar rastro.
+        self._largura_do_painel = max(340, min(painel.sizeHint().width() + 28, 460))
+        rolagem.setMinimumWidth(self._largura_do_painel)
 
         self.abas = QTabWidget()
         self.abas.addTab(
@@ -148,31 +194,85 @@ class JanelaPrincipal(QMainWindow):
 
         divisor.setStretchFactor(0, 0)
         divisor.setStretchFactor(1, 1)
-        divisor.setSizes([330, 870])
+        divisor.setSizes([self._largura_do_painel, 1200 - self._largura_do_painel])
 
         self.setCentralWidget(divisor)
         self.statusBar().showMessage("Pronto")
 
     def _mensagem_inicial(self) -> QWidget:
-        rotulo = QLabel(
-            "<h2>RabMapper</h2>"
-            "<p>Analise estatica de artefatos e threat intelligence.</p>"
-            "<p>Selecione um arquivo a esquerda e clique em <b>Analisar</b>.</p>"
-            f"<p style='color:{_cinza()}'>O artefato nao e executado. Ainda assim, "
-            "manipule amostras reais apenas em maquina virtual isolada.</p>"
-        )
-        rotulo.setAlignment(Qt.AlignCenter)
-        rotulo.setWordWrap(True)
+        """
+        Tela inicial.
 
+        Em vez de um paragrafo solto, lista o que o pipeline faz: quem abre
+        a ferramenta pela primeira vez descobre o escopo sem precisar rodar
+        uma analise para adivinhar.
+        """
         pagina = QWidget()
         layout = QVBoxLayout(pagina)
-        layout.addWidget(rotulo)
+        layout.setContentsMargins(48, 40, 48, 40)
+        layout.setSpacing(ESPACO["md"])
+        layout.addStretch(1)
+
+        titulo = QLabel("RabMapper")
+        titulo.setObjectName(TITULO)
+        titulo.setAlignment(Qt.AlignCenter)
+        layout.addWidget(titulo)
+
+        subtitulo = QLabel("Analise estatica de artefatos e threat intelligence")
+        subtitulo.setObjectName(SUBTITULO)
+        subtitulo.setAlignment(Qt.AlignCenter)
+        layout.addWidget(subtitulo)
+
+        layout.addSpacing(ESPACO["xl"])
+
+        cabecalho = QLabel("O QUE A ANALISE FAZ")
+        cabecalho.setObjectName(CABECALHO_SECAO)
+        cabecalho.setAlignment(Qt.AlignCenter)
+        layout.addWidget(cabecalho)
+
+        descricao = QLabel(
+            "Extrai strings com emulacao  •  reverte ofuscacao  •  "
+            "identifica indicadores<br>"
+            "gera e valida regra YARA  •  mapeia tecnicas MITRE ATT&amp;CK<br>"
+            "monta a Cyber Kill Chain  •  cruza com grupos conhecidos<br>"
+            "consulta fontes externas  •  exporta o relatorio"
+        )
+        descricao.setAlignment(Qt.AlignCenter)
+        descricao.setWordWrap(True)
+        # Linha longa cansa a leitura; 620px e a faixa confortavel.
+        descricao.setMaximumWidth(620)
+        descricao.setStyleSheet(f"QLabel {{ color: {_cinza()}; line-height: 175%; }}")
+        layout.addLayout(_centralizado(descricao))
+
+        layout.addSpacing(ESPACO["xl"])
+
+        instrucao = QLabel(
+            "Selecione um arquivo no painel a esquerda e clique em "
+            "<b>Analisar artefato</b>."
+        )
+        instrucao.setAlignment(Qt.AlignCenter)
+        layout.addWidget(instrucao)
+
+        layout.addSpacing(ESPACO["md"])
+
+        ressalva = QLabel(
+            "O artefato nunca e executado — a analise e inteiramente "
+            "estatica. Ainda assim, manipule amostras reais apenas em "
+            "maquina virtual isolada, com snapshot."
+        )
+        ressalva.setObjectName(NOTA)
+        ressalva.setWordWrap(True)
+        ressalva.setMaximumWidth(620)
+        layout.addLayout(_centralizado(ressalva))
+
+        layout.addStretch(2)
         return pagina
 
     def _painel_esquerdo(self) -> QWidget:
         painel = QWidget()
         layout = QVBoxLayout(painel)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(ESPACO["sm"])
 
         # --- Arquivo ---
         self.area_arquivo = AreaDeArquivo(self._definir_arquivo)
@@ -188,7 +288,7 @@ class JanelaPrincipal(QMainWindow):
         grupo = QGroupBox("Analise")
         formulario = QFormLayout(grupo)
 
-        self.usar_floss = QCheckBox("Usar FLOSS (mais lento, muito melhor)")
+        self.usar_floss = QCheckBox("Usar FLOSS")
         self.usar_floss.setChecked(True)
         self.usar_floss.setToolTip(
             "Recupera strings montadas em runtime: stack, tight e decoded.\n"
@@ -200,7 +300,7 @@ class JanelaPrincipal(QMainWindow):
         self.gerar_yara.setChecked(True)
         formulario.addRow(self.gerar_yara)
 
-        self.usar_stix = QCheckBox("Usar o STIX oficial do ATT&&CK")
+        self.usar_stix = QCheckBox("STIX oficial do ATT&&CK")
         self.usar_stix.setChecked(True)
         self.usar_stix.setToolTip(
             "Baixa o bundle oficial (~45 MB) na primeira vez.\n"
@@ -221,7 +321,7 @@ class JanelaPrincipal(QMainWindow):
         self.min_string = QSpinBox()
         self.min_string.setRange(3, 64)
         self.min_string.setValue(4)
-        formulario.addRow("Tamanho minimo de string:", self.min_string)
+        formulario.addRow("String minima:", self.min_string)
 
         layout.addWidget(grupo)
 
@@ -240,7 +340,7 @@ class JanelaPrincipal(QMainWindow):
         grupo_rede = QGroupBox("Enriquecimento externo")
         layout_rede = QVBoxLayout(grupo_rede)
 
-        self.enriquecer = QCheckBox("Consultar VirusTotal e Shodan")
+        self.enriquecer = QCheckBox("Consultar fontes externas")
         self.enriquecer.setChecked(False)
         self.enriquecer.toggled.connect(self._confirmar_enriquecimento)
         layout_rede.addWidget(self.enriquecer)
@@ -277,6 +377,7 @@ class JanelaPrincipal(QMainWindow):
         layout_bazaar.addWidget(self.botao_consultar_bazaar)
 
         self.botao_baixar_amostra = QPushButton("Baixar amostra (ZIP cifrado)")
+        self.botao_baixar_amostra.setObjectName(BOTAO_PERIGO)
         self.botao_baixar_amostra.clicked.connect(self._baixar_amostra)
         layout_bazaar.addWidget(self.botao_baixar_amostra)
 
@@ -285,22 +386,15 @@ class JanelaPrincipal(QMainWindow):
             "isolado."
         )
         self.rotulo_bazaar.setWordWrap(True)
-        from gui.views import tema_escuro
-
-        self.rotulo_bazaar.setStyleSheet(
-            "QLabel { color: %s; font-size: 11px; }"
-            % ("#ff7b72" if tema_escuro() else "#b3261e")
-        )
+        self.rotulo_bazaar.setObjectName(AVISO)
         layout_bazaar.addWidget(self.rotulo_bazaar)
 
         layout.addWidget(grupo_bazaar)
 
         # --- Acao ---
-        self.botao_analisar = QPushButton("Analisar")
-        self.botao_analisar.setMinimumHeight(36)
-        fonte = QFont()
-        fonte.setBold(True)
-        self.botao_analisar.setFont(fonte)
+        self.botao_analisar = QPushButton("Analisar artefato")
+        self.botao_analisar.setObjectName(BOTAO_PRIMARIO)
+        self.botao_analisar.setMinimumHeight(40)
         self.botao_analisar.clicked.connect(self._analisar)
         layout.addWidget(self.botao_analisar)
 
@@ -897,6 +991,13 @@ def main() -> int:
 
     aplicacao = QApplication(sys.argv)
     aplicacao.setApplicationName("RabMapper")
+
+    # A folha vale para a aplicacao inteira, inclusive para os widgets
+    # criados depois - o que importa aqui, ja que as abas de resultado so
+    # nascem quando a analise termina.
+    from gui.estilo import aplicar
+
+    aplicar(aplicacao)
 
     janela = JanelaPrincipal()
     janela.show()

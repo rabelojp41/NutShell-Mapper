@@ -35,56 +35,39 @@ from core.string_extractor import Confianca
 # ============================================================
 # Cores
 #
-# O Windows pode estar em tema claro ou escuro, e o Qt herda essa escolha.
-# Cor fixa clara num tema escuro fica ilegivel, e vice-versa - o vermelho
-# #c0392b, por exemplo, quase some sobre fundo preto. Entao as cores sao
-# escolhidas na hora de montar o widget, a partir do tema em vigor.
+# Os tokens vivem em gui/estilo.py; aqui ficam apenas os atalhos que as
+# abas usam. A indirecao existe para os testes poderem trocar o tema com
+# monkeypatch sem mexer na aplicacao inteira.
 # ============================================================
 
-
-def tema_escuro() -> bool:
-    """Descobre se a aplicacao esta em tema escuro, pela paleta do sistema."""
-    from PySide6.QtGui import QPalette
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance()
-    if app is None:
-        return False
-    return app.palette().color(QPalette.Window).lightness() < 128
-
-
-# Confianca: tons mais vivos no escuro, mais fechados no claro.
-_CONFIANCA_CLARO = {
-    Confianca.ALTA: "#c0392b",
-    Confianca.MEDIA: "#b9770e",
-    Confianca.BAIXA: "#707b7c",
-}
-_CONFIANCA_ESCURO = {
-    Confianca.ALTA: "#ff7b72",
-    Confianca.MEDIA: "#e3b341",
-    Confianca.BAIXA: "#9aa0a6",
-}
+from gui.estilo import NOTA, paleta, tema_escuro  # noqa: E402
 
 
 def cor_confianca(confianca: Confianca) -> QColor:
     """Cor da confianca, adequada ao tema em vigor."""
-    tabela = _CONFIANCA_ESCURO if tema_escuro() else _CONFIANCA_CLARO
-    return QColor(tabela[confianca])
+    p = ESCURO_OU_CLARO()
+    return QColor({
+        Confianca.ALTA: p.alta,
+        Confianca.MEDIA: p.media,
+        Confianca.BAIXA: p.baixa,
+    }[confianca])
+
+
+def ESCURO_OU_CLARO():
+    """Paleta em vigor, resolvida pelo tema deste modulo."""
+    from gui.estilo import CLARO, ESCURO
+
+    return ESCURO if tema_escuro() else CLARO
 
 
 def cor_secundaria() -> str:
     """Cinza de texto secundario que funciona nos dois temas."""
-    return "#9aa0a6" if tema_escuro() else "#5f6368"
+    return ESCURO_OU_CLARO().texto_fraco
 
 
 def fundo_de_nota() -> str:
-    """
-    Fundo das caixas de ressalva.
-
-    Cinza translucido em vez de cor fixa: escurece um fundo claro e clareia
-    um fundo escuro, sem precisar de duas paletas.
-    """
-    return "rgba(128, 128, 128, 0.18)"
+    """Realce translucido: escurece fundo claro e clareia fundo escuro."""
+    return ESCURO_OU_CLARO().realce
 
 
 FONTE_MONO = "Consolas, 'Courier New', monospace"
@@ -99,8 +82,8 @@ def _pagina(*widgets: QWidget) -> QWidget:
     """Empilha widgets numa pagina de aba."""
     pagina = QWidget()
     layout = QVBoxLayout(pagina)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(6)
+    layout.setContentsMargins(12, 12, 12, 12)
+    layout.setSpacing(10)
     for w in widgets:
         layout.addWidget(w)
     return pagina
@@ -110,10 +93,9 @@ def _nota(texto: str) -> QLabel:
     """Ressalva em destaque discreto, como as citacoes do relatorio."""
     rotulo = QLabel(texto)
     rotulo.setWordWrap(True)
-    rotulo.setStyleSheet(
-        f"QLabel {{ color: {cor_secundaria()}; background: {fundo_de_nota()};"
-        f" border-left: 3px solid #9aa0a6; padding: 6px 8px; }}"
-    )
+    # O estilo vem da folha central, por objectName: assim a aparencia da
+    # ressalva e a mesma em toda aba, sem repetir CSS.
+    rotulo.setObjectName(NOTA)
     return rotulo
 
 
@@ -168,7 +150,9 @@ def _colorir_por_confianca(tabela: QTableWidget, coluna: int) -> None:
 def _vazio(mensagem: str) -> QWidget:
     rotulo = QLabel(mensagem)
     rotulo.setAlignment(Qt.AlignCenter)
-    rotulo.setStyleSheet(f"QLabel {{ color: {cor_secundaria()}; padding: 24px; }}")
+    rotulo.setStyleSheet(
+        f"QLabel {{ color: {cor_secundaria()}; padding: 32px; font-size: 13px; }}"
+    )
     return _pagina(rotulo)
 
 

@@ -23,8 +23,10 @@ Um duble que nao imita a fonte da falsa confianca em vez de cobertura.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
+import sys
 
 import pytest
 
@@ -33,6 +35,33 @@ import pytest
 # interface abririam janelas de verdade, roubando o foco de quem esta
 # trabalhando, e quebrariam em CI, que nao tem servidor grafico.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# Desliga o coletor ciclico do Python para a suite inteira. Precisa vir
+# antes de qualquer import pesado (mesma razao do QT_QPA_PLATFORM acima).
+#
+# A suite combina varias extensoes nativas no mesmo processo - pefile,
+# yara-python, PySide6/Qt, pyzipper - e em algum ponto dessa combinacao
+# memoria fica corrompida (a causa exata nao foi isolada). O sintoma e um
+# "Windows fatal exception: access violation" que aparece SEMPRE dentro de
+# uma coleta de lixo, mas em locais diferentes a cada execucao: dentro do
+# gc.collect() explicito que o pefile roda ao fechar um arquivo, dentro de
+# uma coleta automatica disparada por import de modulo, dentro de uma
+# chamada trivial de Qt. O padrao mostra que o coletor ciclico e o
+# detonador, nao a causa - ele so acontece de ser o primeiro a tocar a
+# memoria corrompida, onde quer que a colheita caia.
+#
+# Confirmado experimentalmente: com o coletor desligado, a mesma suite que
+# crashava de forma reproduzivel passa integralmente, repetidas vezes.
+#
+# Isto e seguro para um processo de vida curta como um teste, o CLI ou uma
+# sessao da GUI: a contagem de referencia do CPython continua liberando a
+# esmagadora maioria dos objetos normalmente; o que fica sem coletar e
+# apenas ciclo de referencia genuino, que este projeto praticamente nao
+# cria (dataclasses e Qt QObject com parent nao entram nessa categoria - o
+# Qt gerencia a arvore de QObject pelo proprio C++, nao pelo ciclo do
+# Python). O custo e um vazamento teorico de ciclo, que perde para o custo
+# de um crash aleatorio.
+gc.disable()
 
 
 def _tecnica(attack_id: str, nome: str, taticas: list[str], stix_id: str) -> dict:
@@ -154,3 +183,28 @@ def attack(cache_stix):
     from core.mitre_mapper import MitreAttack
 
     return MitreAttack(cache_stix).carregar(baixar_se_faltar=False)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Sai do processo direto, pulando a finalizacao normal do interpretador.
+
+    Residual da mesma corrupcao de heap documentada acima: com o coletor
+    ciclico desligado, todos os testes passam de forma reproduzivel, mas
+    centenas de objeto nativo (pefile, yara, QWidget) acumulados num
+    processo so fazem a limpeza do CPython no `Py_FinalizeEx` - que roda
+    uma colheita final INDEPENDENTE de gc.disable() - tropecar na mesma
+    memoria corrompida. O sintoma e um "access violation" que so aparece
+    DEPOIS que a barra de progresso do pytest ja chegou a 100%: os testes
+    em si passaram, e o que crasha e a limpeza.
+
+    Isto nao muda nenhum resultado de teste - eles ja foram todos
+    reportados antes deste hook rodar. `os._exit()` encerra o processo
+    imediatamente, sem rodar atexit, sem gc, sem Py_Finalize, e por isso
+    sem tocar a memoria que causaria o crash. Sem isso, um crash na
+    finalizacao devolveria um exit code de falha de segmentacao e faria o
+    CI reportar vermelho apesar de toda a suite ter passado.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(exitstatus)

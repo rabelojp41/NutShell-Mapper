@@ -24,6 +24,53 @@ from core.deobfuscator import entropia_shannon
 logger = logging.getLogger(__name__)
 
 
+def _neutralizar_gc_collect_do_pefile() -> None:
+    """
+    Remove o gc.collect() incondicional que o pefile roda ao fechar um PE.
+
+    O metodo pefile.PE._close_data() termina com um `gc.collect()` que
+    executa sempre - mesmo quando nao ha mmap nenhum para liberar. Esse
+    metodo tambem e chamado automaticamente pelo proprio __init__ do
+    pefile quando o parse falha (`except: self.close(); raise`), entao ele
+    dispara mesmo em arquivo que nem chega a ser um PE valido.
+
+    Este modulo nunca abre PE por caminho (sempre por `data=`), entao
+    self.__from_file nunca e True e o unico mmap que esse metodo poderia
+    fechar nunca existe - o gc.collect() e puro custo, sem beneficio
+    nenhum, em 100% dos casos daqui.
+
+    O custo nao e so desempenho: uma colheita completa e sincrona,
+    disparada de dentro do tratamento de excecao de uma extensao C,
+    interagindo com outras extensoes nativas no mesmo processo (Qt, yara,
+    pyzipper), produziu um crash intermitente por corrupcao de heap
+    (access violation dentro do proprio gc.collect()) - reproduzido de
+    forma confiavel ao rodar a suite de testes da GUI, que analisa muitos
+    artefatos sinteticos nao-PE.
+
+    O patch preserva o comportamento de fechar um mmap real, para o caso
+    (que nao ocorre neste modulo, mas pode ocorrer se pefile for usado
+    para outra coisa no mesmo processo) de alguem abrir um PE por
+    caminho: a colheita roda normalmente quando ha de fato um mmap.
+    """
+    original = pefile.PE._close_data
+
+    def _close_data_sem_gc_desnecessario(self):
+        import mmap as _mmap
+
+        tem_mmap = getattr(self, "_PE__from_file", None) is True and (
+            isinstance(getattr(self, "__data__", None), _mmap.mmap)
+        )
+        if tem_mmap:
+            original(self)
+        # Sem mmap para fechar, nao ha razao para forcar uma colheita
+        # completa - o ciclo normal de coleta do Python da conta do resto.
+
+    pefile.PE._close_data = _close_data_sem_gc_desnecessario
+
+
+_neutralizar_gc_collect_do_pefile()
+
+
 # Acima disso a secao esta comprimida, cifrada ou empacotada. 7.0 e o valor
 # usado pela maioria das ferramentas de triagem; texto e codigo normal
 # raramente passam de 6.5.
@@ -284,17 +331,30 @@ def analisar(caminho: str | Path) -> InfoPE:
     except OSError as erro:
         return InfoPE(e_pe=False, erro=f"nao foi possivel ler o arquivo: {erro}")
 
+    # Confere o magic "MZ" antes de chamar o pefile. Quando __parse__ falha,
+    # o proprio __init__ do pefile roda "except: self.close(); raise", e
+    # close() chama gc.collect() de forma incondicional - uma colheita
+    # completa e sincrona, disparada de dentro do tratamento de excecao do
+    # C extension. Em combinacao com outras extensoes nativas no mesmo
+    # processo (Qt, yara, pyzipper), isso produziu um crash intermitente
+    # por corrupcao de heap (access violation dentro do proprio
+    # gc.collect()), reproduzido de forma confiavel rodando a suite de
+    # testes da GUI - que analisa muitos artefatos sinteticos nao-PE.
+    # A grande maioria dos artefatos que chegam aqui (script, shellcode,
+    # documento, texto) nem comeca com "MZ", entao filtrar isso aqui evita
+    # entrar no caminho perigoso do pefile na esmagadora maioria dos casos,
+    # sem mudar nada do que e reportado - e o mesmo InvalidPE de sempre.
+    if dados[:2] != b"MZ":
+        return InfoPE(e_pe=False, erro="DOS Header magic not found.")
+
     try:
-        # Passa os bytes em vez do caminho de proposito. Com um caminho, o
-        # pefile mapeia o arquivo em memoria (mmap), e o ciclo de vida desse
-        # mmap causa corrupcao de heap (0xc0000374) quando muitos objetos PE
-        # sao criados e destruidos na mesma sessao - o crash aparece depois,
-        # durante a coleta de lixo, longe da causa. Com `data=`, o pefile
-        # trabalha sobre os nossos bytes e nao ha mmap nenhum para fechar.
-        # O arquivo inteiro ja e lido pelo string_extractor de qualquer forma.
+        # Passa os bytes em vez do caminho: com um caminho, o pefile mapeia
+        # o arquivo em memoria (mmap), cujo ciclo de vida tambem e fonte de
+        # corrupcao de heap. O arquivo inteiro ja foi lido pelo
+        # string_extractor de qualquer forma.
         pe = pefile.PE(data=dados, fast_load=False)
     except pefile.PEFormatError as erro:
-        logger.debug("%s nao e um PE: %s", caminho, erro)
+        logger.debug("%s tem magic MZ mas nao e um PE valido: %s", caminho, erro)
         return InfoPE(e_pe=False, erro=str(erro))
 
     try:
@@ -327,9 +387,19 @@ def analisar(caminho: str | Path) -> InfoPE:
             tipos_de_recurso=_ler_tipos_de_recurso(pe),
         )
         info.indicios = _levantar_indicios(info)
-
     finally:
-        pe.close()
+        # Nao chamamos pe.close() aqui de proposito. Ele so tem trabalho a
+        # fazer quando o PE foi aberto a partir de um caminho (mmap para
+        # fechar); como usamos `data=`, nao ha mmap nenhum. Mas o close()
+        # do pefile chama gc.collect() de forma incondicional, MESMO
+        # quando nao ha nada para fechar - e uma colheita completa e
+        # sincrona a cada arquivo analisado e cara e, em combinacao com
+        # outras extensoes nativas no mesmo processo (Qt, yara, pyzipper),
+        # foi a causa de um crash intermitente por corrupcao de heap
+        # (access violation dentro do proprio gc.collect()). O objeto `pe`
+        # e liberado normalmente pela contagem de referencia do Python
+        # quando sai de escopo, sem precisar de gc.collect() forcado.
+        del pe
 
     logger.info("PE analisado: %s", info.resumo())
     return info

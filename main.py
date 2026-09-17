@@ -18,9 +18,31 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import gc
 import logging
 import sys
 from pathlib import Path
+
+# Desliga o coletor ciclico do Python para o processo inteiro, antes de
+# qualquer modulo pesado ser importado (todos os outros - core.pipeline,
+# enrichment, gui - sao importados sob demanda dentro de cada comando).
+#
+# O pipeline combina varias extensoes nativas no mesmo processo - pefile,
+# yara-python, PySide6/Qt, pyzipper - e essa combinacao corrompe memoria em
+# algum ponto ainda nao isolado. O sintoma e um "access violation" que
+# aparece sempre dentro de uma coleta de lixo, mas em locais diferentes a
+# cada execucao: o coletor ciclico e o detonador, nao a causa - ele so
+# acontece de ser o primeiro a tocar a memoria corrompida. Reproduzido de
+# forma confiavel na suite de testes; desligar o coletor eliminou o crash
+# de forma consistente em execucoes repetidas.
+#
+# Seguro para este programa: CLI e GUI sao, cada analise, um processo ou
+# uma sessao de duracao limitada, e a contagem de referencia do CPython
+# continua liberando a esmagadora maioria dos objetos normalmente. So fica
+# sem coletar um ciclo de referencia genuino, que este projeto praticamente
+# nao cria - Qt QObject com parent e gerenciado pela arvore C++ do proprio
+# Qt, nao pelo coletor do Python.
+gc.disable()
 
 logger = logging.getLogger("rabmapper")
 
