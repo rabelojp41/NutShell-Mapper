@@ -32,9 +32,13 @@ jobs:
         run: python -m tests.check_env
 
       - name: Rodar os testes
-        # A suite e inteiramente offline: nenhum teste faz requisicao de
-        # rede nem depende do bundle de 45 MB do ATT&CK. Os testes da
-        # interface rodam em modo offscreen, configurado no conftest.
+        # A suite e inteiramente offline, e isso agora e imposto e nao
+        # apenas afirmado: o conftest neutraliza os clients de VirusTotal,
+        # Shodan e MalwareBazaar para todo teste. Antes a suite dependia de
+        # o ambiente nao ter chave configurada - numa maquina com .env ela
+        # consultava o VirusTotal de verdade, passava por isso, e escondia
+        # bug que o CI acusava. Tambem nao depende do bundle de 45 MB do
+        # ATT&CK. Os testes da interface rodam em modo offscreen.
         run: python -m pytest tests/ -q --tb=short
 
       - name: Analise de ponta a ponta sobre um binario real

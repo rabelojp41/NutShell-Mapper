@@ -573,3 +573,34 @@ def test_score_da_nvd_vem_com_a_ressalva(artefato_com_cve, monkeypatch):
 
     texto = rg.montar_markdown(r)
     assert "apenas REFERENCIA" in texto
+
+
+def test_ressalva_da_nvd_sai_sem_chave_de_api(artefato_com_cve, monkeypatch):
+    """
+    A NVD nao exige chave, entao e comum ser a UNICA fonte com resultado.
+
+    A secao de enriquecimento era descartada quando VirusTotal e Shodan
+    vinham vazios, e levava junto a ressalva de que o score descreve a
+    vulnerabilidade citada e nao o artefato. O relatorio saia com "10.0" em
+    destaque e sem nada explicando o numero - exatamente para quem nao tem
+    chave nenhuma configurada, que e o caso mais comum.
+    """
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: _NVDFalso())
+
+    r = analisar(
+        artefato_com_cve,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True),
+    )
+
+    # A condicao do teste: nenhuma fonte com chave respondeu.
+    assert r.virustotal == []
+    assert r.shodan == []
+    assert r.nvd, "a NVD deveria ter respondido mesmo sem chave"
+
+    texto = rg.montar_markdown(r)
+    assert "NVD (vulnerabilidades" in texto
+    assert "apenas REFERENCIA" in texto
+    # O score aparece; e justamente por isso que a ressalva precisa estar.
+    assert "10.0" in texto

@@ -504,7 +504,11 @@ def aba_yara(r) -> QWidget:
 
 
 def aba_enriquecimento(r) -> QWidget:
-    if not r.virustotal and not r.shodan:
+    # A NVD entra aqui junto com as outras: ela nao exige chave de API,
+    # entao e comum ser a unica fonte com resultado. Sem isso a aba some
+    # inteira e leva junto a ressalva de que o score CVSS descreve a
+    # vulnerabilidade citada, e nao o artefato analisado.
+    if not r.virustotal and not r.shodan and not r.nvd:
         if not r.opcoes.enriquecer:
             return _vazio(
                 "Enriquecimento externo nao executado.\n\n"

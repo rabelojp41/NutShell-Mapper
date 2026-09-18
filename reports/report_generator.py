@@ -437,7 +437,14 @@ def _secao_cvss(r: ResultadoAnalise) -> Secao:
 
 
 def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
-    if not r.virustotal and not r.shodan:
+    # A NVD precisa entrar nesta condicao junto com os outros. Ela nao exige
+    # chave de API, entao e comum ser a UNICA fonte com resultado - e quando
+    # a condicao olhava so para VirusTotal e Shodan, a secao inteira era
+    # descartada e levava junto a ressalva de que o score CVSS descreve a
+    # vulnerabilidade citada, nao este arquivo. O relatorio saia com "10.0"
+    # em destaque e sem nada explicando o numero, exatamente para quem nao
+    # tem chave nenhuma configurada.
+    if not r.virustotal and not r.shodan and not r.nvd:
         if not r.opcoes.enriquecer:
             return Secao(
                 "Enriquecimento",

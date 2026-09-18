@@ -208,3 +208,35 @@ def pytest_sessionfinish(session, exitstatus):
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(exitstatus)
+
+
+@pytest.fixture(autouse=True)
+def _sem_rede_por_acidente(monkeypatch):
+    """
+    Nenhum teste alcanca servico externo sem pedir explicitamente.
+
+    Sem isto, a suite se comportava de um jeito na maquina de quem tem
+    `config/.env` com chaves e de outro no CI, que nao tem nenhuma. Nao e
+    so inconsistencia de resultado: rodar os testes disparava consulta REAL
+    ao VirusTotal com a chave do analista, enviando a terceiros os hashes
+    dos artefatos de teste. Numa ferramenta de CTI isso e o oposto do
+    prometido - o proprio pipeline so consulta servico externo mediante
+    pedido explicito, e a suite que o testa nao podia ser a excecao.
+
+    Foi tambem o que escondeu um bug real: a secao de enriquecimento do
+    relatorio sumia quando VirusTotal e Shodan vinham vazios, levando junto
+    a ressalva do score CVSS. Com chave configurada o VirusTotal respondia,
+    a secao aparecia e o teste passava; sem chave, quebrava. O CI acusou, a
+    maquina local nao.
+
+    Quem precisa de um client dubla o seu por cima: monkeypatch aplicado
+    dentro do teste vence este, que roda antes.
+    """
+    from enrichment import (
+        malwarebazaar_client,
+        shodan_client,
+        virustotal_client,
+    )
+
+    for modulo in (virustotal_client, shodan_client, malwarebazaar_client):
+        monkeypatch.setattr(modulo, "criar", lambda *_a, **_k: None)
