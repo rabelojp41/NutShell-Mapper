@@ -1095,8 +1095,12 @@ def main() -> int:
 
     configurar_logging()
 
+    from gui.icone import icone_do_app, identificar_no_windows
+
+    identificar_no_windows()
     aplicacao = QApplication(sys.argv)
     aplicacao.setApplicationName("Nut-Shell Mapper")
+    aplicacao.setWindowIcon(icone_do_app())
 
     # A folha vale para a aplicacao inteira, inclusive para os widgets
     # criados depois - o que importa aqui, ja que as abas de resultado so

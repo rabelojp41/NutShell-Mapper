@@ -30,12 +30,13 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QUrl
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtGui import QColor
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow
 
+from gui.icone import icone_do_app, identificar_no_windows
 from gui.ponte import Ponte
 
 logger = logging.getLogger(__name__)
@@ -126,9 +127,7 @@ class JanelaWeb(QMainWindow):
         self.resize(1360, 880)
         self.setMinimumSize(1060, 680)
 
-        icone = PASTA_WEB / "icone.svg"
-        if icone.exists():
-            self.setWindowIcon(QIcon(str(icone)))
+        self.setWindowIcon(icone_do_app())
 
         self.visao = QWebEngineView(self)
         self.visao.setContextMenuPolicy(Qt.NoContextMenu)
@@ -206,9 +205,11 @@ def main() -> int:
             os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") + " --disable-gpu"
         ).strip()
 
+    identificar_no_windows()
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     aplicacao = QApplication.instance() or QApplication(sys.argv)
     aplicacao.setApplicationName(NOME)
+    aplicacao.setWindowIcon(icone_do_app())
 
     janela = JanelaWeb()
     janela.show()

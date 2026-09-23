@@ -285,6 +285,13 @@ qualquer conexao, e a navegacao para fora da propria pagina e bloqueada. Os
 testes em `tests/test_ponte.py` injetam cargas de XSS em todo campo exibido
 e percorrem todas as telas.
 
+No Windows, para abrir como um programa - pelo icone na Area de Trabalho e
+no Menu Iniciar, sem terminal:
+
+```bash
+python main.py atalho
+```
+
 A interface anterior, em Qt puro, continua disponivel:
 
 ```bash

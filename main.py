@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import gc
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -450,6 +451,29 @@ def comando_gui(args: argparse.Namespace) -> int:
     return gui_main()
 
 
+def comando_atalho(args: argparse.Namespace) -> int:
+    """Cria o atalho com icone na Area de Trabalho e no Menu Iniciar."""
+    try:
+        from PySide6.QtGui import QGuiApplication
+
+        from gui import icone
+    except ImportError as erro:
+        print(f"erro: PySide6 indisponivel ({erro})", file=sys.stderr)
+        return 1
+
+    aplicacao = QGuiApplication.instance() or QGuiApplication([])  # noqa: F841
+    if not icone.CAMINHO_ICO.exists():
+        icone.gerar_ico()
+    try:
+        criados = icone.criar_atalhos()
+    except (OSError, subprocess.SubprocessError) as erro:
+        print(f"erro: nao foi possivel criar o atalho ({erro})", file=sys.stderr)
+        return 1
+    for lnk in criados:
+        print(f"  atalho criado: {lnk}")
+    return 0
+
+
 # ============================================================
 # CLI
 # ============================================================
@@ -598,6 +622,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help="abre a interface antiga, em Qt puro, no lugar da nova",
     )
     p.set_defaults(funcao=comando_gui)
+
+    # --- atalho ---
+    p = sub.add_parser(
+        "atalho",
+        help="cria o atalho com icone na Area de Trabalho e no Menu Iniciar (Windows)",
+        parents=[comum],
+    )
+    p.set_defaults(funcao=comando_atalho)
 
     return parser
 
