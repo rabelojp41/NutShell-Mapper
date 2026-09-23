@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import re
 import string as _string
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
@@ -181,7 +182,7 @@ def _descartar(valor: str) -> str:
     Devolve o motivo do descarte, ou string vazia se ela passa.
     """
     if not (COMPRIMENTO_MINIMO <= len(valor) <= COMPRIMENTO_MAXIMO):
-        return "comprimento fora da faixa util"
+        return "comprimento fora da faixa útil"
 
     if valor in STRINGS_EXATAS_BLOQUEADAS:
         return "alfabeto ou tabela conhecida"
@@ -189,16 +190,16 @@ def _descartar(valor: str) -> str:
     minusculo = valor.lower()
     for trecho in TRECHOS_GENERICOS:
         if trecho in minusculo:
-            return f"contem artefato generico '{trecho}'"
+            return f"contém artefato genérico '{trecho}'"
 
     if RE_SO_DIGITOS.match(valor):
-        return "apenas digitos e pontuacao"
+        return "apenas dígitos e pontuação"
     if RE_SO_SIMBOLOS.match(valor):
-        return "apenas simbolos"
+        return "apenas símbolos"
     if RE_VERSAO.match(valor):
-        return "numero de versao"
+        return "número de versão"
     if RE_GUID.match(valor):
-        return "GUID (especifico deste build)"
+        return "GUID (específico deste build)"
 
     # Precisa ser majoritariamente imprimivel e conter alguma letra.
     if not any(c.isalpha() for c in valor):
@@ -206,7 +207,7 @@ def _descartar(valor: str) -> str:
 
     imprimiveis = sum(1 for c in valor if c in _string.printable)
     if imprimiveis / len(valor) < 0.95:
-        return "contem caracteres nao imprimiveis"
+        return "contém caracteres não imprimíveis"
 
     # Sequencia de um caractere so repetido nao identifica nada.
     if len(set(valor)) <= 2:
@@ -234,7 +235,7 @@ def _pontuar_string(
     # malware as montou em runtime - compilador nao produz isso.
     if s.tipo in (TipoString.STACK, TipoString.TIGHT, TipoString.DECODED):
         nota += 0.40
-        motivos.append(f"string {s.tipo.value} (construida em runtime)")
+        motivos.append(f"string {s.tipo.value} (construída em runtime)")
 
     # String que gerou IOC e o que se quer caçar.
     if valor in valores_de_ioc:
@@ -245,13 +246,13 @@ def _pontuar_string(
     # string: a condicao da regra cobre isso pelo modulo pe.
     if valor in apis_importadas:
         nota -= 0.35
-        motivos.append("ja coberta pela tabela de imports")
+        motivos.append("já coberta pela tabela de imports")
 
     # Comprimento: mais longa, mais especifica - ate o ponto em que vira
     # dado exclusivo daquele build.
     if 16 <= len(valor) <= 64:
         nota += 0.20
-        motivos.append("comprimento especifico")
+        motivos.append("comprimento específico")
     elif len(valor) >= 10:
         nota += 0.10
 
@@ -264,7 +265,7 @@ def _pontuar_string(
         motivos.append("entropia de texto distintivo")
     elif ent > 5.5:
         nota -= 0.15
-        motivos.append("entropia alta: provavel dado codificado")
+        motivos.append("entropia alta: provável dado codificado")
 
     # Mistura de maiuscula, minuscula, digito e simbolo e rara em texto de
     # compilador e comum em nome de mutex, chave e user-agent de malware.
@@ -284,7 +285,7 @@ def _pontuar_string(
     if " " in valor.strip():
         nota += 0.05
 
-    return max(0.0, min(1.0, nota)), "; ".join(motivos) or "string estatica comum"
+    return max(0.0, min(1.0, nota)), "; ".join(motivos) or "string estática comum"
 
 
 def selecionar_strings(
@@ -352,6 +353,19 @@ def selecionar_strings(
 def _escapar(valor: str) -> str:
     """Escapa a string para o formato de texto do YARA."""
     return valor.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _sem_acento(texto: str) -> str:
+    """
+    Remove os acentos de um texto nosso que vai para dentro da regra.
+
+    Avisos e motivos sao mensagens ao usuario, acentuadas, mas tambem entram
+    no meta e nos comentarios do .yar. A regra e feita para ser compartilhada
+    e processada por outras ferramentas; mante-la em ASCII preserva o texto
+    que ela sempre teve. Nao se aplica as strings do artefato ($s*).
+    """
+    decomposto = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in decomposto if not unicodedata.combining(c))
 
 
 def _nome_de_regra(base: str) -> str:
@@ -442,7 +456,7 @@ def _montar_texto(
         'a partir de uma unica amostra"'
     )
     for i, aviso in enumerate(avisos):
-        linhas.append(f'        aviso_{i + 1} = "{_escapar(aviso)}"')
+        linhas.append(f'        aviso_{i + 1} = "{_escapar(_sem_acento(aviso))}"')
 
     # --- strings ---
     linhas.append("")
@@ -455,7 +469,7 @@ def _montar_texto(
         # regra e uma lista opaca e ninguem consegue revisa-la.
         linhas.append(
             f'        $s{i} = "{_escapar(c.valor)}"{modificadores}'
-            f"  // {c.pontuacao:.2f} | {c.origem.value} | {c.motivo}"
+            f"  // {c.pontuacao:.2f} | {c.origem.value} | {_sem_acento(c.motivo)}"
         )
 
     # --- condicao ---
@@ -487,7 +501,7 @@ def _avisar_dado_do_analista(candidatas: list[StringCandidata]) -> list[str]:
     for c in candidatas:
         if casa.lower() in c.valor.lower():
             avisos.append(
-                f"string contem o caminho da maquina de analise "
+                f"string contém o caminho da máquina de análise "
                 f"('{usuario}'): remover antes de publicar a regra"
             )
             break
@@ -562,8 +576,8 @@ def gerar(
 
     if not candidatas:
         raise ErroGeracaoYara(
-            "nenhuma string distintiva sobreviveu a selecao; "
-            "o artefato pode estar empacotado ou ter poucas strings proprias"
+            "nenhuma string distintiva sobreviveu à seleção; "
+            "o artefato pode estar empacotado ou ter poucas strings próprias"
         )
 
     if len(candidatas) < 4:
@@ -604,7 +618,7 @@ def gerar(
         regras, erro = _compilar(texto)
         if regras is None:
             regra.texto = texto
-            avisos.append(f"erro de compilacao: {erro}")
+            avisos.append(f"erro de compilação: {erro}")
             return regra
 
         regra.compila = True
@@ -616,15 +630,15 @@ def gerar(
             if tentativa_minimo < minimo:
                 avisos.append(
                     f"limiar reduzido de {minimo} para {tentativa_minimo} "
-                    "strings para casar com a propria amostra"
+                    "strings para casar com a própria amostra"
                 )
             break
 
     else:
         avisos.append(
-            "a regra nao casa com o proprio artefato nem com limiar 1; "
-            "as strings selecionadas provavelmente vem de conteudo "
-            "decodificado que nao existe literalmente no arquivo"
+            "a regra não casa com o próprio artefato nem com limiar 1; "
+            "as strings selecionadas provavelmente vêm de conteúdo "
+            "decodificado que não existe literalmente no arquivo"
         )
         regra.texto = montar(1)
         return regra
@@ -640,7 +654,7 @@ def gerar(
             if regra.falsos_positivos:
                 avisos.append(
                     f"casou com {len(regra.falsos_positivos)} arquivo(s) benigno(s): "
-                    "a regra esta generica demais"
+                    "a regra está genérica demais"
                 )
 
     # Remonta com a lista completa de avisos, para que o bloco meta da regra
@@ -674,7 +688,7 @@ def salvar(regra: RegraYara, destino: str | Path, forcar: bool = False) -> Path:
     """
     if not regra.valida and not forcar:
         motivos = "; ".join(regra.avisos) or "motivo desconhecido"
-        raise ErroGeracaoYara(f"regra invalida, nao sera salva ({motivos})")
+        raise ErroGeracaoYara(f"regra inválida, não será salva ({motivos})")
 
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)

@@ -99,9 +99,9 @@ class ResultadoVirusTotal:
     @property
     def resumo_de_deteccao(self) -> str:
         if not self.consultado:
-            return "nao consultado"
+            return "não consultado"
         if not self.encontrado:
-            return "nao consta no VirusTotal"
+            return "não consta no VirusTotal"
         return f"{self.maliciosos + self.suspeitos}/{self.total_de_motores}"
 
     def to_dict(self) -> dict:
@@ -154,12 +154,12 @@ class VirusTotalClient(ClienteBase):
 
         if not self._hash_valido(valor):
             resultado.erro = (
-                f"'{valor}' nao e um hash MD5, SHA1 ou SHA256 valido"
+                f"'{valor}' não é um hash MD5, SHA1 ou SHA256 válido"
             )
             return resultado
 
         resultado.observacoes.append(
-            "consulta por hash: o arquivo nao foi enviado ao VirusTotal"
+            "consulta por hash: o arquivo não foi enviado ao VirusTotal"
         )
 
         resposta = self._requisitar(f"/files/{valor}")
@@ -240,7 +240,7 @@ class VirusTotalClient(ClienteBase):
 
         if len(candidatos) > maximo:
             logger.info(
-                "%d IOCs consultaveis, %d consultados (limite)",
+                "%d IOCs consultáveis, %d consultados (limite)",
                 len(candidatos), maximo,
             )
 
@@ -284,8 +284,8 @@ class VirusTotalClient(ClienteBase):
             if resposta.consultado and not resposta.encontrado:
                 resultado.observacoes.append(
                     "hash desconhecido pelo VirusTotal. Pode ser amostra nova, "
-                    "artefato interno ou binario legitimo pouco distribuido - "
-                    "ausencia nao indica nada por si so"
+                    "artefato interno ou binário legítimo pouco distribuído - "
+                    "ausência não indica nada por si só"
                 )
             return resultado
 
@@ -306,14 +306,14 @@ class VirusTotalClient(ClienteBase):
         # --- Leitura honesta do numero de deteccoes ---
         if resultado.maliciosos == 0 and resultado.total_de_motores:
             resultado.observacoes.append(
-                "conhecido pelo VirusTotal e sem deteccoes. Malware recente "
-                "costuma comecar assim"
+                "conhecido pelo VirusTotal e sem detecções. Malware recente "
+                "costuma começar assim"
             )
         elif 0 < resultado.maliciosos <= 3:
             resultado.observacoes.append(
                 f"apenas {resultado.maliciosos} motor(es) apontaram, de "
-                f"{resultado.total_de_motores}. Deteccao isolada e "
-                "frequentemente falso positivo heuristico"
+                f"{resultado.total_de_motores}. Detecção isolada é "
+                "frequentemente falso positivo heurístico"
             )
         elif resultado.consenso_forte:
             resultado.observacoes.append(
@@ -365,7 +365,7 @@ def criar(config=None) -> VirusTotalClient | None:
         from config.settings import CONFIG as config
 
     if not config.virustotal_habilitado:
-        logger.info("VirusTotal desabilitado ou sem chave: consultas serao puladas")
+        logger.info("VirusTotal desabilitado ou sem chave: consultas serão puladas")
         return None
 
     return VirusTotalClient(

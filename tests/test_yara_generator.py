@@ -220,7 +220,7 @@ def test_falso_positivo_e_reportado(tmp_path):
     regra = gerar(caminho, extracao, amostras_benignas=[benigno])
 
     assert regra.falsos_positivos == [str(benigno)]
-    assert any("generica demais" in a for a in regra.avisos)
+    assert any("genérica demais" in a for a in regra.avisos)
 
 
 def test_sem_string_distintiva_levanta_erro(tmp_path):
@@ -283,7 +283,7 @@ def test_salvar_recusa_regra_invalida(tmp_path):
     from core.yara_generator import RegraYara
 
     invalida = RegraYara(nome="x", texto="rule x {}", compila=False)
-    with pytest.raises(ErroGeracaoYara, match="nao sera salva"):
+    with pytest.raises(ErroGeracaoYara, match="não será salva"):
         salvar(invalida, tmp_path / "x.yar")
 
     # Com forcar=True grava assim mesmo, para inspecao.

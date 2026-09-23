@@ -71,15 +71,15 @@ METRICAS_BASE: dict[str, tuple[str, dict[str, str]]] = {
             "N": "Rede",
             "A": "Rede adjacente",
             "L": "Local",
-            "P": "Fisico",
+            "P": "Físico",
         },
     ),
     "AC": ("Complexidade do Ataque", {"L": "Baixa", "H": "Alta"}),
     "PR": (
-        "Privilegios Necessarios",
+        "Privilégios Necessários",
         {"N": "Nenhum", "L": "Baixos", "H": "Altos"},
     ),
-    "UI": ("Interacao do Usuario", {"N": "Nenhuma", "R": "Necessaria"}),
+    "UI": ("Interação do Usuário", {"N": "Nenhuma", "R": "Necessária"}),
     "S": ("Escopo", {"U": "Inalterado", "C": "Alterado"}),
     "C": ("Confidencialidade", {"H": "Alto", "L": "Baixo", "N": "Nenhum"}),
     "I": ("Integridade", {"H": "Alto", "L": "Baixo", "N": "Nenhum"}),
@@ -93,29 +93,29 @@ METRICAS_TEMPORAIS: dict[str, tuple[str, dict[str, str]]] = {
     "E": (
         "Maturidade do Exploit",
         {
-            "X": "Nao definida",
-            "U": "Nao comprovado",
+            "X": "Não definida",
+            "U": "Não comprovado",
             "P": "Prova de conceito",
             "F": "Funcional",
             "H": "Alta",
         },
     ),
     "RL": (
-        "Nivel de Correcao",
+        "Nível de Correção",
         {
-            "X": "Nao definido",
-            "O": "Correcao oficial",
-            "T": "Correcao temporaria",
+            "X": "Não definido",
+            "O": "Correção oficial",
+            "T": "Correção temporária",
             "W": "Contorno",
-            "U": "Indisponivel",
+            "U": "Indisponível",
         },
     ),
     "RC": (
-        "Confianca no Relato",
+        "Confiança no Relato",
         {
-            "X": "Nao definida",
+            "X": "Não definida",
             "U": "Desconhecida",
-            "R": "Razoavel",
+            "R": "Razoável",
             "C": "Confirmada",
         },
     ),
@@ -229,7 +229,7 @@ def montar_vetor(
 
         if valor not in aceitos:
             raise ErroCVSS(
-                f"{nome} ({sigla}): '{valor}' invalido. "
+                f"{nome} ({sigla}): '{valor}' inválido. "
                 f"Aceitos: {', '.join(f'{k} ({v})' for k, v in aceitos.items())}"
             )
         partes.append(f"{sigla}:{valor}")
@@ -304,9 +304,9 @@ def calcular(vetor: str, cve: str = "") -> ResultadoCVSS:
     try:
         c = CVSS3(normalizado)
     except CVSS3MalformedError as erro:
-        raise ErroCVSS(f"vetor CVSS invalido: {erro}") from erro
+        raise ErroCVSS(f"vetor CVSS inválido: {erro}") from erro
     except Exception as erro:  # a lib levanta tipos variados para entrada ruim
-        raise ErroCVSS(f"nao foi possivel interpretar o vetor: {erro}") from erro
+        raise ErroCVSS(f"não foi possível interpretar o vetor: {erro}") from erro
 
     base, temporal, ambiental = c.scores()
 
@@ -333,13 +333,13 @@ def calcular(vetor: str, cve: str = "") -> ResultadoCVSS:
 
     if cve and not RE_CVE.match(cve.strip()):
         resultado.avisos.append(
-            f"'{cve}' nao esta no formato CVE-AAAA-NNNN e nao foi validado"
+            f"'{cve}' não está no formato CVE-AAAA-NNNN e não foi validado"
         )
 
     if resultado.score_temporal is None and resultado.score_ambiental is None:
         resultado.avisos.append(
-            "apenas o score base foi calculado: o vetor nao traz metricas "
-            "temporais nem ambientais. Este e o score que a NVD publica"
+            "apenas o score base foi calculado: o vetor não traz métricas "
+            "temporais nem ambientais. Este é o score que a NVD publica"
         )
 
     logger.info("CVSS calculado: %s", resultado.resumo())
@@ -377,7 +377,7 @@ def resumir_em_texto(resultado: ResultadoCVSS) -> str:
         )
 
     linhas.append("")
-    linhas.append("Metricas:")
+    linhas.append("Métricas:")
     for m in resultado.metricas:
         linhas.append(f"  {m.sigla:3} {m.nome:26} {m.valor_legivel}")
 

@@ -340,7 +340,7 @@ def test_misp_so_marca_to_ids_em_confianca_alta(resultado, tmp_path):
 
     for atributo in evento["Event"]["Attribute"]:
         if atributo["to_ids"] and not atributo["comment"].startswith("Artefato"):
-            assert "confianca alta" in atributo["comment"]
+            assert "confiança alta" in atributo["comment"]
 
 
 def test_misp_inclui_o_hash_do_artefato(resultado, tmp_path):

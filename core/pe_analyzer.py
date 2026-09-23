@@ -281,33 +281,33 @@ def _levantar_indicios(info: InfoPE) -> list[str]:
     for s in info.secoes:
         if s.alta_entropia:
             indicios.append(
-                f"secao '{s.nome}' com entropia {s.entropia} "
+                f"seção '{s.nome}' com entropia {s.entropia} "
                 f"(>= {ENTROPIA_SECAO_ALTA}): comprimida, cifrada ou empacotada"
             )
         if s.nome_incomum:
-            indicios.append(f"secao '{s.nome}' com nome fora do padrao de compilador")
+            indicios.append(f"seção '{s.nome}' com nome fora do padrão de compilador")
         if s.gravavel_e_executavel:
             indicios.append(
-                f"secao '{s.nome}' e gravavel e executavel (W+X): "
-                "codigo automodificavel ou desempacotador"
+                f"seção '{s.nome}' é gravável e executável (W+X): "
+                "código automodificável ou desempacotador"
             )
         # Secao declarada muito maior na memoria do que no arquivo indica
         # espaco reservado para desempacotar em runtime.
         if s.tamanho_bruto == 0 and s.tamanho_virtual > 0:
             indicios.append(
-                f"secao '{s.nome}' sem dado no arquivo mas com {s.tamanho_virtual} "
-                "bytes reservados em memoria"
+                f"seção '{s.nome}' sem dado no arquivo mas com {s.tamanho_virtual} "
+                "bytes reservados em memória"
             )
 
     if not info.imports:
         indicios.append(
-            "nenhuma DLL importada: tabela de imports destruida ou "
+            "nenhuma DLL importada: tabela de imports destruída ou "
             "resolvida em runtime"
         )
     elif len(info.todas_as_apis()) < 10:
         indicios.append(
-            f"apenas {len(info.todas_as_apis())} funcoes importadas: "
-            "poucas para um programa funcional, sugere resolucao dinamica"
+            f"apenas {len(info.todas_as_apis())} funções importadas: "
+            "poucas para um programa funcional, sugere resolução dinâmica"
         )
 
     if "RT_RCDATA" in info.tipos_de_recurso:
@@ -329,7 +329,7 @@ def analisar(caminho: str | Path) -> InfoPE:
     try:
         dados = caminho.read_bytes()
     except OSError as erro:
-        return InfoPE(e_pe=False, erro=f"nao foi possivel ler o arquivo: {erro}")
+        return InfoPE(e_pe=False, erro=f"não foi possível ler o arquivo: {erro}")
 
     # Confere o magic "MZ" antes de chamar o pefile. Quando __parse__ falha,
     # o proprio __init__ do pefile roda "except: self.close(); raise", e
@@ -354,7 +354,7 @@ def analisar(caminho: str | Path) -> InfoPE:
         # string_extractor de qualquer forma.
         pe = pefile.PE(data=dados, fast_load=False)
     except pefile.PEFormatError as erro:
-        logger.debug("%s tem magic MZ mas nao e um PE valido: %s", caminho, erro)
+        logger.debug("%s tem magic MZ mas não é um PE válido: %s", caminho, erro)
         return InfoPE(e_pe=False, erro=str(erro))
 
     try:

@@ -156,7 +156,7 @@ def test_aba_atribuicao_traz_a_ressalva(aplicacao, artefato, cache_stix):
     )
     widget = views.aba_atribuicao(r)
     textos = " ".join(x.text() for x in widget.findChildren(QLabel))
-    assert "nao e atribuicao" in textos
+    assert "não é atribuição" in textos
 
 
 # ============================================================

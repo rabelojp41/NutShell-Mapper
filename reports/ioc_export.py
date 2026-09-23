@@ -278,7 +278,7 @@ def exportar_stix(
         )
     except ImportError as erro:
         raise ErroExportacao(
-            f"a biblioteca stix2 nao esta disponivel ({erro})"
+            f"a biblioteca stix2 não está disponível ({erro})"
         ) from erro
 
     destino = Path(destino)
@@ -294,10 +294,10 @@ def exportar_stix(
         name=f"Artefato analisado: {nome}",
         is_family=False,
         description=(
-            f"Amostra SHA256 {resultado.sha256}. Indicadores extraidos por "
-            "analise estatica com o RabMapper. A presenca de um indicador "
-            "descreve o que foi encontrado no arquivo, nao comportamento "
-            "observado em execucao."
+            f"Amostra SHA256 {resultado.sha256}. Indicadores extraídos por "
+            "análise estática com o RabMapper. A presença de um indicador "
+            "descreve o que foi encontrado no arquivo, não comportamento "
+            "observado em execução."
         ),
     )
 
@@ -313,8 +313,8 @@ def exportar_stix(
             vulnerabilidade = Vulnerability(
                 name=i.valor,
                 description=(
-                    "Vulnerabilidade referenciada pelo artefato. A referencia "
-                    "nao estabelece que o artefato explore a falha."
+                    "Vulnerabilidade referenciada pelo artefato. A referência "
+                    "não estabelece que o artefato explore a falha."
                 ),
                 external_references=[
                     ExternalReference(source_name="cve", external_id=i.valor)
@@ -338,7 +338,7 @@ def exportar_stix(
             algoritmo = _algoritmo_do_hash(i.valor)
             if algoritmo is None:
                 sem_representacao.append(
-                    f"{i.tipo.value}: {i.valor} (comprimento nao reconhecido)"
+                    f"{i.tipo.value}: {i.valor} (comprimento não reconhecido)"
                 )
                 continue
             # O STIX escreve o nome do algoritmo entre aspas dentro do
@@ -365,7 +365,7 @@ def exportar_stix(
             pattern_type="stix",
             valid_from=_agora(),
             description=(
-                f"Confianca da extracao: {i.confianca.value}."
+                f"Confiança da extração: {i.confianca.value}."
                 + (f" {i.observacao}" if i.observacao else "")
                 + f" Encontrado em string do tipo {i.tipo_string.value}."
             ),
@@ -444,7 +444,7 @@ def exportar_misp(
             algoritmo = _algoritmo_do_hash(i.valor)
             if algoritmo is None:
                 sem_representacao.append(
-                    f"{i.tipo.value}: {i.valor} (comprimento nao reconhecido)"
+                    f"{i.tipo.value}: {i.valor} (comprimento não reconhecido)"
                 )
                 continue
             mapeado = (algoritmo, "Payload delivery")
@@ -464,7 +464,7 @@ def exportar_misp(
                 # So confianca alta vira regra automatica sem revisao.
                 "to_ids": i.confianca is Confianca.ALTA,
                 "comment": (
-                    f"confianca {i.confianca.value}"
+                    f"confiança {i.confianca.value}"
                     + (f" — {i.observacao}" if i.observacao else "")
                 ),
             }
@@ -472,7 +472,7 @@ def exportar_misp(
 
     evento = {
         "Event": {
-            "info": f"RabMapper — analise estatica de {nome}",
+            "info": f"RabMapper — análise estática de {nome}",
             "date": (resultado.iniciado_em or _agora())[:10],
             # 2 = "Possibly false" na escala do MISP. Analise estatica
             # automatizada nao justifica nivel maior sem revisao humana.
@@ -546,7 +546,7 @@ def exportar(
         funcao = FORMATOS.get(chave)
 
         if funcao is None:
-            logger.warning("formato de exportacao desconhecido: %s", formato)
+            logger.warning("formato de exportação desconhecido: %s", formato)
             continue
 
         caminho = diretorio / f"{nome_base}{sufixo[chave]}.{extensao[chave]}"

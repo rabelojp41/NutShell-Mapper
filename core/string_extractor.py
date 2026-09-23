@@ -355,7 +355,7 @@ def _rodar_floss(
     """
     executavel = _localizar_floss()
     if executavel is None:
-        raise RuntimeError("FLOSS nao encontrado no PATH nem no ambiente atual")
+        raise RuntimeError("FLOSS não encontrado no PATH nem no ambiente atual")
 
     comando = [executavel, "-j", "-n", str(tamanho_minimo)]
     if formato:
@@ -373,7 +373,7 @@ def _rodar_floss(
     except subprocess.TimeoutExpired as erro:
         raise RuntimeError(f"FLOSS excedeu o timeout de {timeout}s") from erro
     except OSError as erro:
-        raise RuntimeError(f"nao foi possivel executar o FLOSS: {erro}") from erro
+        raise RuntimeError(f"não foi possível executar o FLOSS: {erro}") from erro
 
     if proc.returncode == 0 and not proc.stdout.strip():
         # O FLOSS desiste da analise inteira, em silencio e com codigo 0,
@@ -382,19 +382,19 @@ def _rodar_floss(
         # "FLOSS falhou: codigo de saida 0" seria enganoso: ele rodou bem e
         # decidiu nao analisar.
         raise RuntimeError(
-            "o FLOSS nao produziu saida; ele encerra sem analisar quando o "
-            "arquivo nao contem nenhuma string estatica"
+            "o FLOSS não produziu saída; ele encerra sem analisar quando o "
+            "arquivo não contém nenhuma string estática"
         )
 
     if proc.returncode != 0 or not proc.stdout.strip():
         detalhe = proc.stderr.decode("utf-8", "replace").strip().splitlines()
-        motivo = detalhe[-1] if detalhe else f"codigo de saida {proc.returncode}"
+        motivo = detalhe[-1] if detalhe else f"código de saída {proc.returncode}"
         raise RuntimeError(f"FLOSS falhou: {motivo}")
 
     try:
         dados = json.loads(proc.stdout.decode("utf-8", "replace"))
     except json.JSONDecodeError as erro:
-        raise RuntimeError(f"saida do FLOSS nao e JSON valido: {erro}") from erro
+        raise RuntimeError(f"saída do FLOSS não é JSON válido: {erro}") from erro
 
     return _converter_json_floss(dados)
 
@@ -457,7 +457,7 @@ def _converter_json_floss(dados: dict) -> tuple[list[StringExtraida], list[str]]
         ("enable_decoded_strings", "strings decodificadas"),
     ):
         if analise.get(campo) is False:
-            avisos.append(f"FLOSS nao analisou {rotulo}")
+            avisos.append(f"FLOSS não analisou {rotulo}")
 
     return [s for s in strings if s.valor], avisos
 
@@ -538,14 +538,14 @@ def _classificar_ipv4(texto: str, ip: str, dentro_de_url: bool) -> tuple[Confian
         return Confianca.ALTA, "aparece dentro de uma URL"
 
     if ip in IPS_RUIDO:
-        return Confianca.BAIXA, "endereco reservado ou resolvedor publico conhecido"
+        return Confianca.BAIXA, "endereço reservado ou resolvedor público conhecido"
 
     octetos = [int(o) for o in ip.split(".")]
     primeiro, segundo = octetos[0], octetos[1]
 
     # Faixas que nao podem ser um C2 na internet.
     if primeiro == 0:
-        return Confianca.BAIXA, "faixa 0.0.0.0/8 (invalida como destino)"
+        return Confianca.BAIXA, "faixa 0.0.0.0/8 (inválida como destino)"
     if primeiro == 127:
         return Confianca.BAIXA, "loopback"
     if primeiro == 169 and segundo == 254:
@@ -555,13 +555,13 @@ def _classificar_ipv4(texto: str, ip: str, dentro_de_url: bool) -> tuple[Confian
 
     # Contexto textual explicito de versao.
     if any(pista in texto.lower() for pista in PISTAS_DE_VERSAO):
-        return Confianca.BAIXA, "string menciona versao/build"
+        return Confianca.BAIXA, "string menciona versão/build"
 
     # Primeiro octeto de um digito: quase sempre versao. Os blocos 1.0.0.0/8
     # a 9.0.0.0/8 existem e sao roteaveis, mas aparecem muito pouco como C2
     # em amostra real, enquanto "1.x.y.z" de versao aparece o tempo todo.
     if primeiro < 10:
-        return Confianca.BAIXA, "primeiro octeto de um digito: provavel numero de versao"
+        return Confianca.BAIXA, "primeiro octeto de um dígito: provável número de versão"
 
     # RFC 1918: e um IOC legitimo (C2 interno, movimento lateral), mas nao
     # serve para busca externa - o Shodan nao vai ter nada sobre ele.
@@ -570,7 +570,7 @@ def _classificar_ipv4(texto: str, ip: str, dentro_de_url: bool) -> tuple[Confian
         or (primeiro == 172 and 16 <= segundo <= 31)
         or (primeiro == 192 and segundo == 168)
     ):
-        return Confianca.MEDIA, "endereco privado (RFC 1918)"
+        return Confianca.MEDIA, "endereço privado (RFC 1918)"
 
     return Confianca.MEDIA, ""
 
@@ -585,11 +585,11 @@ def _dominio_plausivel(dominio: str) -> tuple[bool, str]:
     tld = dominio.rsplit(".", 1)[-1].lower()
 
     if tld in EXTENSOES_ARQUIVO:
-        return False, f"'{tld}' e extensao de arquivo, nao TLD"
+        return False, f"'{tld}' é extensão de arquivo, não TLD"
     if tld not in TLDS_VALIDOS:
         return False, f"TLD '{tld}' desconhecido"
     if len(dominio) > 253:
-        return False, "excede o tamanho maximo de um FQDN"
+        return False, "excede o tamanho máximo de um FQDN"
 
     return True, ""
 
@@ -661,7 +661,7 @@ def _detectar_em_string(s: StringExtraida) -> Iterator[IOC]:
                 dominio,
                 TipoIOC.DOMINIO,
                 Confianca.BAIXA,
-                "dominio muito curto: aparece por acaso em dado binario",
+                "domínio muito curto: aparece por acaso em dado binário",
             )
         else:
             yield ioc(dominio, TipoIOC.DOMINIO, Confianca.MEDIA)
@@ -700,7 +700,7 @@ def _detectar_em_string(s: StringExtraida) -> Iterator[IOC]:
         if antes == "<" and depois == ">":
             continue
 
-        yield ioc(m.group(), TipoIOC.HASH, Confianca.MEDIA, "hash embutido no binario")
+        yield ioc(m.group(), TipoIOC.HASH, Confianca.MEDIA, "hash embutido no binário")
 
     # --- Referencia a CVE ---
     for m in RE_CVE.finditer(texto):
@@ -804,14 +804,14 @@ def _rodar_floss_com_deteccao(
 
     if melhor is None:
         raise RuntimeError(
-            "o artefato nao e PE e o FLOSS nao conseguiu analisa-lo como "
+            "o artefato não é PE e o FLOSS não conseguiu analisá-lo como "
             "shellcode de 32 nem de 64 bits"
         )
 
     strings, avisos, arquitetura = melhor
     avisos.append(
-        f"artefato analisado como shellcode {arquitetura}: nao ha cabecalho "
-        "de PE, entao a arquitetura foi deduzida por tentativa"
+        f"artefato analisado como shellcode {arquitetura}: não há cabeçalho "
+        "de PE, então a arquitetura foi deduzida por tentativa"
     )
     return strings, avisos, arquitetura
 
@@ -844,12 +844,12 @@ def extrair(
     caminho = Path(caminho)
 
     if not caminho.is_file():
-        raise ErroExtracao(f"arquivo nao encontrado: {caminho}")
+        raise ErroExtracao(f"arquivo não encontrado: {caminho}")
 
     try:
         dados = caminho.read_bytes()
     except OSError as erro:
-        raise ErroExtracao(f"nao foi possivel ler {caminho}: {erro}") from erro
+        raise ErroExtracao(f"não foi possível ler {caminho}: {erro}") from erro
 
     if not dados:
         raise ErroExtracao(f"arquivo vazio: {caminho}")
@@ -873,9 +873,9 @@ def extrair(
             resultado.formato_floss = usado
         except RuntimeError as erro:
             # Nao e fatal: o extrator nativo ainda entrega strings estaticas.
-            logger.warning("FLOSS indisponivel, usando extrator nativo (%s)", erro)
+            logger.warning("FLOSS indisponível, usando extrator nativo (%s)", erro)
             resultado.avisos.append(
-                f"FLOSS nao pode ser usado ({erro}); apenas strings estaticas"
+                f"FLOSS não pode ser usado ({erro}); apenas strings estáticas"
             )
 
     if not resultado.usou_floss:
@@ -883,7 +883,7 @@ def extrair(
 
     resultado.iocs = detectar_iocs(resultado.strings)
 
-    logger.info("extracao concluida: %s", resultado.resumo())
+    logger.info("extração concluída: %s", resultado.resumo())
     return resultado
 
 
@@ -901,12 +901,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("arquivo", help="caminho do artefato")
     parser.add_argument(
         "-n", "--min", type=int, default=TAMANHO_MINIMO_PADRAO,
-        help="tamanho minimo da string",
+        help="tamanho mínimo da string",
     )
     parser.add_argument(
         "--sem-floss", action="store_true", help="usa apenas o extrator nativo"
     )
-    parser.add_argument("--json", action="store_true", help="saida em JSON")
+    parser.add_argument("--json", action="store_true", help="saída em JSON")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -929,7 +929,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     print(f"Tamanho : {resultado.tamanho_bytes} bytes")
     print(f"SHA256  : {resultado.sha256}")
     print(f"MD5     : {resultado.md5}")
-    print(f"FLOSS   : {'sim' if resultado.usou_floss else 'nao (extrator nativo)'}")
+    print(f"FLOSS   : {'sim' if resultado.usou_floss else 'não (extrator nativo)'}")
 
     for aviso in resultado.avisos:
         print(f"  aviso: {aviso}")
