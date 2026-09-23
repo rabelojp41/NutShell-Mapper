@@ -1764,7 +1764,12 @@ VISTAS.config = () => {
       linhaStatus("Shodan", amb.chaves.shodan, "Configurada", "Não configurada"),
       linhaStatus("MalwareBazaar", amb.chaves.malwarebazaar, "Configurada", "Não configurada"),
       linhaStatus("Consultas externas no .env", amb.enriquecimento_habilitado, "Habilitadas", "Desabilitadas (ENABLE_ENRICHMENT)")),
-    !amb.env_encontrado && h("div", { class: "mt-16" }, nota("aviso", h("strong", {}, "config/.env não encontrado. "), "Copie config/.env.example para config/.env e preencha as chaves que tiver.")),
+    // Sem .env mas com chave: ela veio de variavel de ambiente (CI, shell).
+    // Mandar "copie o .env.example" nesse caso seria orientacao errada.
+    !amb.env_encontrado && h("div", { class: "mt-16" },
+      Object.values(amb.chaves).some(Boolean)
+        ? nota("info", h("strong", {}, "config/.env não encontrado. "), "As chaves configuradas vieram de variáveis de ambiente.")
+        : nota("aviso", h("strong", {}, "config/.env não encontrado. "), "Copie config/.env.example para config/.env e preencha as chaves que tiver.")),
 
     h("div", { class: "secao-titulo mt-24" }, "IA local"),
     h("div", { class: "opcoes" },

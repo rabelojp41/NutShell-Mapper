@@ -708,3 +708,20 @@ def test_nome_ja_composto_nao_e_duplicado(attack):
     attack.enriquecer(tecnica)
     assert tecnica.nome == "Process Injection"
     assert tecnica.nome.count(":") == 0
+
+
+def test_cache_padrao_nao_depende_da_pasta_de_onde_se_roda(tmp_path, monkeypatch):
+    """
+    Relativo, o caminho do cache seguia a pasta atual: rodar o RabMapper de
+    outro lugar não achava o bundle e baixava ~50 MB no meio da análise.
+    """
+    from pathlib import Path
+
+    from core import mitre_mapper
+
+    raiz = Path(mitre_mapper.__file__).resolve().parent.parent
+    monkeypatch.chdir(tmp_path)
+
+    caminho = mitre_mapper.CAMINHO_CACHE_PADRAO
+    assert caminho.is_absolute()
+    assert caminho == raiz / "data" / "mitre_cache" / "enterprise-attack.json"
