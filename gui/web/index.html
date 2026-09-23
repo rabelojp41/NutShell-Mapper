@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <!--
+    A pagina rende dado extraido de malware. A politica abaixo e a segunda
+    linha de defesa, depois do codigo que nunca usa innerHTML com dado:
+    nenhum script inline, nenhum script de fora, nenhuma conexao de rede.
+    Se uma string maliciosa um dia escapar para o HTML, ela nao tem como
+    executar nem como mandar nada para lugar nenhum.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' qrc:; style-src 'self'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>RabMapper</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="lateral">
+      <div class="marca">
+        <div class="marca-simbolo" id="marca-simbolo"></div>
+        <span class="marca-nome">RabMapper</span>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="lateral-rodape" id="rodape"></div>
+    </aside>
+    <main class="principal">
+      <header class="topo" id="topo"></header>
+      <div class="conteudo" id="conteudo"></div>
+    </main>
+  </div>
+  <div class="avisos-flutuantes" id="avisos"></div>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

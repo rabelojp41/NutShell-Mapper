@@ -434,9 +434,12 @@ def comando_bazaar(args: argparse.Namespace) -> int:
     return 0
 
 
-def comando_gui(_args: argparse.Namespace) -> int:
+def comando_gui(args: argparse.Namespace) -> int:
     try:
-        from gui.app import main as gui_main
+        if getattr(args, "classica", False):
+            from gui.app import main as gui_main
+        else:
+            from gui.janela_web import main as gui_main
     except ImportError as erro:
         print(
             f"erro: nao foi possivel carregar a interface grafica ({erro}).\n"
@@ -586,6 +589,11 @@ def construir_parser() -> argparse.ArgumentParser:
 
     # --- gui ---
     p = sub.add_parser("gui", help="abre a interface grafica", parents=[comum])
+    p.add_argument(
+        "--classica",
+        action="store_true",
+        help="abre a interface antiga, em Qt puro, no lugar da nova",
+    )
     p.set_defaults(funcao=comando_gui)
 
     return parser

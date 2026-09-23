@@ -36,6 +36,17 @@ import pytest
 # trabalhando, e quebrariam em CI, que nao tem servidor grafico.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+# O QtWebEngine, usado pela interface web, exige esta configuracao ANTES de
+# existir qualquer QApplication - e o test_gui.py cria a sua primeiro. Sem
+# isto, os testes da interface web dependeriam da ordem de execucao.
+try:
+    from PySide6.QtCore import QCoreApplication, Qt
+
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+    import PySide6.QtWebEngineWidgets  # noqa: F401
+except ImportError:
+    pass
+
 # Desliga o coletor ciclico do Python para a suite inteira. Precisa vir
 # antes de qualquer import pesado (mesma razao do QT_QPA_PLATFORM acima).
 #

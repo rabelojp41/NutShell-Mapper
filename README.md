@@ -42,7 +42,7 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
 | `reports/ioc_export.py` | exporta os indicadores em CSV, STIX 2.1 e evento MISP |
-| `gui/` | interface desktop em PySide6 |
+| `gui/` | interface desktop: pagina HTML local (`gui/web/`) numa janela nativa, e a ponte com o Python (`gui/ponte.py`) |
 | `main.py` | linha de comando |
 
 ## Instalacao
@@ -240,9 +240,32 @@ relatorio, porque foi um palpite e nao um fato lido de um cabecalho.
 python main.py gui
 ```
 
-Arraste o artefato para a janela, escolha as opcoes e clique em Analisar. O
-resultado aparece em abas: Resumo, Indicadores, Strings, Desofuscacao, PE,
-ATT&CK, Kill Chain, Atribuicao, YARA, Enriquecimento e Limitacoes.
+Arraste o artefato para a janela, escolha o que executar e clique em
+Analisar. Enquanto roda, cada etapa aparece com o tempo gasto; na geracao
+por IA, o andamento token a token. O resultado abre na visao geral
+(indicadores, tecnicas, faixa da Kill Chain, veredito da regra YARA) e cada
+secao tem a sua tela: Indicadores, Tecnicas ATT&CK, Kill Chain, Atribuicao,
+Desofuscacao, Strings, Executavel (PE), Regra YARA, Enriquecimento, Resumo
+por IA e Avisos. Ao ligar o resumo por IA, a interface verifica se o Ollama
+esta instalado, aberto e com o modelo, e diz o que fazer em cada caso.
+
+A interface e uma pagina HTML local dentro de uma janela nativa
+(QtWebEngine), falando com o Python por um canal em memoria - sem servidor
+e sem porta aberta, entao nenhum site aberto no navegador consegue acionar
+a ferramenta. Como a pagina exibe dado extraido de malware, nenhum dado
+passa por `innerHTML`, a politica de seguranca bloqueia script inline e
+qualquer conexao, e a navegacao para fora da propria pagina e bloqueada. Os
+testes em `tests/test_ponte.py` injetam cargas de XSS em todo campo exibido
+e percorrem todas as telas.
+
+A interface anterior, em Qt puro, continua disponivel:
+
+```bash
+python main.py gui --classica
+```
+
+Em maquina virtual sem aceleracao grafica, se a janela abrir preta, defina
+`RABMAPPER_SEM_GPU=1`.
 
 ### Testes
 
