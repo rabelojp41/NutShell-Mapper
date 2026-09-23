@@ -1382,7 +1382,8 @@ VISTAS.yara = () => {
       h("div", { class: "numero", style: "cursor:default" }, h("div", { class: "numero-rotulo" }, "Falsos positivos"), h("div", { class: "numero-valor" }, y.falsos_positivos?.length ?? 0), h("div", { class: "numero-det" }, "em binários benignos testados")),
     ),
     (y.avisos || []).map((a) => h("div", { style: "margin-bottom:12px" }, nota("aviso", a))),
-    h("div", { class: "painel" },
+    blocoRevisaoYara(r),
+    h("div", { class: "painel mt-16" },
       h("div", { class: "painel-cab" }, h("span", { class: "mono" }, y.nome + ".yar"),
         h("div", { class: "painel-acoes" },
           h("button", { class: "btn btn-pequeno", onclick: () => copiar(y.texto, "Regra copiada") }, icone("copiar"), "Copiar"),
@@ -1390,6 +1391,121 @@ VISTAS.yara = () => {
       realcarYara(y.texto)),
   );
 };
+
+// ------------------------------------------------------------
+// Revisao da regra por IA
+// ------------------------------------------------------------
+
+const NOME_RISCO = { alto: "Alto", medio: "Médio", baixo: "Baixo" };
+const CLASSE_RISCO = { alto: "alta", medio: "media", baixo: "baixa" };
+
+function seloRisco(risco) {
+  return h("span", { class: `selo ${CLASSE_RISCO[risco] || "baixa"}` }, NOME_RISCO[risco] || risco);
+}
+
+function origemEtiqueta(calculado) {
+  return h("span", { class: `etiqueta ${calculado ? "" : "acento"}`, title: calculado ? "Calculado pela ferramenta, sem modelo" : "Escrito pelo modelo local" },
+    calculado ? "calculado" : "IA");
+}
+
+function revisarYara() {
+  const r = estado.resultado;
+  estado.revisaoYara = { sha: r.sha256, carregando: true, mensagem: "", dados: null, erro: "" };
+  renderizar();
+  ponte.revisarYara(estado.opcoes.modelo_ia || "llama3.1:8b");
+}
+
+tarefas.revisao_yara = (t) => {
+  const rv = estado.revisaoYara;
+  if (!rv) return;
+  rv.carregando = false;
+  if (t.ok) rv.dados = t.dados;
+  else rv.erro = t.erro || "a revisão falhou";
+  if (estado.vista === "yara") renderizar();
+};
+
+function blocoRevisaoYara(r) {
+  const rv = estado.revisaoYara?.sha === r.sha256 ? estado.revisaoYara : null;
+  const d = estado.ollama;
+  const iaPronta = d?.estado === "pronto";
+
+  if (!rv || (!rv.dados && !rv.carregando)) {
+    return h("div", { class: "painel" },
+      h("div", { class: "painel-cab" }, icone("faisca"), h("span", { class: "painel-titulo" }, "Revisão da regra")),
+      h("div", { class: "painel-corpo pilha" },
+        h("p", { class: "t2", style: "margin:0" },
+          "Explica o que cada string é, o que a condição exige e onde a regra é fraca. A condição e as fraquezas são calculadas pela ferramenta; a explicação das strings vem do modelo local e é conferida."),
+        rv?.erro && nota("perigo", rv.erro),
+        h("div", { class: "linha" },
+          h("button", { class: "btn btn-primario btn-pequeno", onclick: revisarYara }, icone("faisca"), "Revisar regra"),
+          h("span", { class: `status-servico ${iaPronta ? "ok" : "falha"}` },
+            iaPronta ? `com ${estado.opcoes.modelo_ia} (Ollama ${d.versao})` : "sem IA: o Ollama não está pronto. A parte calculada funciona mesmo assim."))));
+  }
+
+  if (rv.carregando) {
+    return h("div", { class: "painel" },
+      h("div", { class: "painel-cab" }, icone("faisca"), h("span", { class: "painel-titulo" }, "Revisão da regra")),
+      h("div", { class: "painel-corpo" },
+        h("div", { class: "etapa rodando", style: "border:0;padding:0" },
+          h("div", { class: "etapa-marca" }),
+          h("div", {}, h("div", { class: "etapa-nome" }, "Revisando a regra…"),
+            h("div", { class: "etapa-msg", id: "revisao-andamento" }, rv.mensagem || "carregando o modelo")),
+          h("span"))));
+  }
+
+  const v = rv.dados;
+  const selo = !v.gerado
+    ? h("span", { class: "etiqueta" }, "sem IA")
+    : v.confiavel
+      ? h("span", { class: "etiqueta ok" }, "Conferida: nada inventado")
+      : h("span", { class: "etiqueta alta" }, `${v.problemas.length} problema${v.problemas.length > 1 ? "s" : ""} na saída da IA`);
+
+  const linhas = v.comentarios.map((c) => h("tr", {},
+    h("td", { class: "mono estreita" }, c.id),
+    h("td", { class: "quebra", style: "max-width:260px" },
+      h("span", { class: "mono" }, c.valor.length > 90 ? c.valor.slice(0, 90) + "…" : c.valor),
+      c.suspeita_de_injecao && h("div", { style: "margin-top:4px" }, h("span", { class: "etiqueta alta" }, "possível prompt injection"))),
+    h("td", {}, c.o_que_e || h("span", { class: "t3" }, v.gerado ? "sem comentário da IA" : "—"),
+      c.fatos?.length > 0 && h("div", { class: "t3", style: "font-size:11.5px;margin-top:4px;line-height:1.5" }, c.fatos.map((f) => h("div", {}, "· " + f)))),
+    h("td", { class: "estreita" }, seloRisco(c.risco_calculado),
+      c.divergencia && h("div", { class: "t3", style: "font-size:11.5px;margin-top:3px", title: c.motivo_ia || "" },
+        `IA disse ${(NOME_RISCO[c.risco_ia] || c.risco_ia).toLowerCase()} (${c.divergencia})`)),
+  ));
+
+  const fraquezas = [
+    ...v.fraquezas_calculadas.map((f) => [f, true]),
+    ...v.pontos_fracos.map((f) => [f, false]),
+  ];
+
+  return h("div", { class: "painel" },
+    h("div", { class: "painel-cab" },
+      icone("faisca"), h("span", { class: "painel-titulo" }, "Revisão da regra"), selo,
+      h("div", { class: "painel-acoes" },
+        v.gerado && h("span", { class: "t3", style: "font-size:12px;align-self:center" }, `${v.modelo} · ${fmtDuracao(v.duracao_segundos)}`),
+        h("button", { class: "btn btn-pequeno", onclick: revisarYara }, icone("recarregar"), "Revisar de novo"))),
+    h("div", { class: "painel-corpo pilha" },
+      !v.gerado && v.erro && nota("aviso", h("strong", {}, "A parte da IA não rodou. "), v.erro, " O que aparece abaixo foi calculado pela ferramenta."),
+      v.problemas.length > 0 && nota("perigo", h("strong", {}, "A conferência encontrou problemas na saída da IA:"),
+        h("ul", { style: "margin:6px 0 0;padding-left:18px" }, v.problemas.map((p) => h("li", {}, p)))),
+      h("div", {},
+        h("div", { class: "linha", style: "margin-bottom:4px" }, h("strong", {}, "O que a regra exige"), origemEtiqueta(true)),
+        h("div", { class: "t2" }, v.condicao_explicada)),
+      v.resumo && h("div", {},
+        h("div", { class: "linha", style: "margin-bottom:4px" }, h("strong", {}, "Leitura"), origemEtiqueta(false)),
+        h("p", { class: "texto-ia", style: "margin:0" }, v.resumo)),
+      fraquezas.length > 0 && h("div", {},
+        h("div", { style: "margin-bottom:6px" }, h("strong", {}, "Pontos fracos")),
+        h("div", { class: "pilha", style: "gap:6px" }, fraquezas.map(([texto, calc]) =>
+          h("div", { class: "linha", style: "align-items:flex-start;gap:10px" }, origemEtiqueta(calc), h("span", { class: "t2" }, texto))))),
+      v.sugestoes.length > 0 && h("div", {},
+        h("div", { class: "linha", style: "margin-bottom:6px" }, h("strong", {}, "Sugestões"), origemEtiqueta(false)),
+        h("ul", { style: "margin:0;padding-left:18px", class: "t2" }, v.sugestoes.map((s) => h("li", {}, s))))),
+    h("div", { class: "tabela-wrap", style: "border-top:1px solid var(--border)" }, h("table", { class: "tabela" },
+      h("thead", {}, h("tr", {}, h("th", {}, "String"), h("th", {}, "Valor"), h("th", {}, "O que é"), h("th", {}, "Falso positivo"))),
+      h("tbody", {}, linhas))),
+    h("div", { class: "painel-rodape t3", style: "font-size:12px" },
+      "A condição, os fatos de cada string e o risco de falso positivo são calculados pela ferramenta, não pelo modelo. O texto da IA é apoio: foi conferido quanto a identificadores, contagens e cobertura, mas o julgamento é seu."));
+}
 
 // ============================================================
 // Vista: enriquecimento
@@ -1753,6 +1869,16 @@ function conectar() {
       (tarefas[t.id] || (() => {}))(t);
     });
     ponte.arrastando.connect((json) => document.body.classList.toggle("arrastando", JSON.parse(json).ativo));
+    ponte.andamentoTarefa.connect((json) => {
+      const t = JSON.parse(json);
+      if (t.id === "revisao_yara" && estado.revisaoYara?.carregando) {
+        estado.revisaoYara.mensagem = t.mensagem;
+        // So o texto muda: re-renderizar a tela inteira a cada meio segundo
+        // faria a rolagem pular enquanto o analista le a regra.
+        const el = document.getElementById("revisao-andamento");
+        if (el) el.textContent = t.mensagem;
+      }
+    });
 
     estado.ambiente = await chamar("estado");
     renderizar();

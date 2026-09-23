@@ -78,6 +78,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 ::-webkit-scrollbar-thumb:hover { background: #3a3f4a; }
 
+/* Tamanho padrao de icone. Sem isto, um icone num contexto que a folha
+   nao previu cresce ate a largura do conteiner - ja aconteceu no
+   cabecalho de painel. Cada contexto (botao, nav, nota) sobrescreve. */
+svg { width: 16px; height: 16px; flex-shrink: 0; }
+.painel-cab > svg { color: var(--text-3); }
+
 .mono { font-family: var(--font-mono); font-size: 12px; }
 .num { font-variant-numeric: tabular-nums; }
 .t2 { color: var(--text-2); }

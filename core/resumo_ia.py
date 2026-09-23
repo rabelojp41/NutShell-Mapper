@@ -530,7 +530,13 @@ class ClienteOllama:
 
         return True, ""
 
-    def gerar(self, prompt: str, progresso: CallbackGeracao | None = None) -> str:
+    def gerar(
+        self,
+        prompt: str,
+        progresso: CallbackGeracao | None = None,
+        formato: dict | None = None,
+        max_tokens: int = 600,
+    ) -> str:
         """
         Gera texto a partir do prompt.
 
@@ -545,6 +551,10 @@ class ClienteOllama:
             prompt: o texto de entrada.
             progresso: chamado a cada pedaco recebido, com o estado parcial
                 da geracao. Opcional.
+            formato: esquema JSON que a resposta deve seguir. O Ollama
+                restringe a geracao a ele, o que torna a saida conferivel
+                campo a campo em vez de texto livre.
+            max_tokens: teto da resposta.
 
         Raises:
             ErroResumoIA: servidor fora do ar, modelo ausente ou resposta
@@ -555,22 +565,26 @@ class ClienteOllama:
         partes: list[str] = []
         inicio = time.monotonic()
 
+        corpo: dict[str, Any] = {
+            "model": self.modelo,
+            "prompt": prompt,
+            "stream": True,
+            "keep_alive": MANTER_CARREGADO,
+            "options": {
+                # Temperatura zero: o resumo precisa ser o mais
+                # literal possivel em relacao aos achados. Nao ha
+                # nada a ganhar com criatividade aqui.
+                "temperature": 0,
+                "num_predict": max_tokens,
+            },
+        }
+        if formato is not None:
+            corpo["format"] = formato
+
         try:
             resposta = requests.post(
                 f"{self.url}/api/generate",
-                json={
-                    "model": self.modelo,
-                    "prompt": prompt,
-                    "stream": True,
-                    "keep_alive": MANTER_CARREGADO,
-                    "options": {
-                        # Temperatura zero: o resumo precisa ser o mais
-                        # literal possivel em relacao aos achados. Nao ha
-                        # nada a ganhar com criatividade aqui.
-                        "temperature": 0,
-                        "num_predict": 600,
-                    },
-                },
+                json=corpo,
                 timeout=self.timeout,
                 stream=True,
             )

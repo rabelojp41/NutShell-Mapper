@@ -354,3 +354,101 @@ def test_todas_as_telas_rendem_sem_erro_de_javascript(janela, resultado_real, ca
 
     erros_js = [r.getMessage() for r in caplog.records if r.getMessage().startswith("js ")]
     assert erros_js == []
+
+
+# ============================================================
+# Revisao da regra YARA e blocos de IA
+# ============================================================
+
+
+def _revisao_envenenada(carga: str) -> dict:
+    from core.revisao_yara import ComentarioDeString, RevisaoYara
+
+    rv = RevisaoYara(
+        modelo="llama3.1:8b",
+        gerado=True,
+        condicao_explicada=carga,
+        fraquezas_calculadas=[carga],
+        resumo=carga,
+        pontos_fracos=[carga],
+        sugestoes=[carga],
+        problemas=[carga],
+        comentarios=[
+            ComentarioDeString(
+                id="$s0", valor=carga, fatos=[carga], risco_calculado="alto",
+                suspeita_de_injecao=True, comentada=True, o_que_e=carga,
+                risco_ia="baixo", motivo_ia=carga, divergencia="subestima",
+            )
+        ],
+    )
+    return rv.to_dict()
+
+
+def _com_resumo_ia(dados: dict, texto: str) -> dict:
+    dados["opcoes"]["resumo_ia"] = True
+    dados["resumo_ia"] = {
+        "texto": texto, "modelo": "llama3.1:8b", "gerado": True, "erro": "",
+        "duracao_segundos": 9.5, "invencoes": [{"tipo": "ioc", "valor": texto, "explicacao": texto}],
+        "avisos": [], "confiavel": False, "ressalva": texto,
+    }
+    return dados
+
+
+def test_revisao_da_regra_nao_vira_codigo(janela, resultado_real):
+    """
+    A revisão exibe as strings da regra - que vieram do malware - e o texto
+    do modelo, que uma string de injection pode ter influenciado. Os dois
+    são dado do adversário.
+    """
+    carga = " ".join(CARGAS)
+    dados = _com_resumo_ia(resultado_para_dict(resultado_real), carga)
+    janela.ponte.concluido.emit(json.dumps(dados))
+    _esperar(300)
+    _js(
+        janela,
+        "estado.revisaoYara = {sha: estado.resultado.sha256, carregando: false, dados: "
+        + json.dumps(_revisao_envenenada(carga)) + "}",
+    )
+
+    for vista in ("yara", "visao", "ia"):
+        _js(janela, f"ir('{vista}')")
+        _esperar(150)
+        assert _js(janela, "typeof window.__invadido") == "undefined", f"codigo executou em {vista}"
+        perigosos = _js(
+            janela,
+            "document.querySelectorAll('#conteudo img, #conteudo script, #conteudo iframe, "
+            "#conteudo a[href], #conteudo svg[onload], #conteudo [onerror]').length",
+        )
+        assert perigosos == 0, f"elemento perigoso em {vista}"
+
+
+def test_nenhum_icone_fica_gigante(janela, resultado_real):
+    """
+    Um ícone sem tamanho definido cresce até a largura do contêiner. Isso
+    aconteceu no cabeçalho da revisão e do resumo por IA, que nenhuma
+    captura de tela tinha mostrado porque exigem um resultado de IA.
+    """
+    dados = _com_resumo_ia(resultado_para_dict(resultado_real), "Resumo de teste.")
+    janela.ponte.concluido.emit(json.dumps(dados))
+    _esperar(300)
+    _js(
+        janela,
+        "estado.revisaoYara = {sha: estado.resultado.sha256, carregando: false, dados: "
+        + json.dumps(_revisao_envenenada("texto")) + "}",
+    )
+
+    for vista in VISTAS:
+        _js(janela, f"ir('{vista}')")
+        _esperar(120)
+        maior = _js(
+            janela,
+            "Math.max(0, ...[...document.querySelectorAll('svg')].map(s => s.getBoundingClientRect().width))",
+        )
+        assert maior <= 32, f"ícone de {maior}px na tela {vista}"
+
+
+def test_revisar_sem_analise_responde_com_erro(ponte):
+    respostas = []
+    ponte.tarefaConcluida.connect(respostas.append)
+    ponte.revisarYara("llama3.1:8b")
+    assert json.loads(respostas[0]) == {"id": "revisao_yara", "ok": False, "erro": "nenhuma regra YARA gerada"}

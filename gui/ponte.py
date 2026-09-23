@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -179,6 +180,8 @@ class Ponte(QObject):
     concluido = Signal(str)
     falhou = Signal(str)
     tarefaConcluida = Signal(str)
+    # {id, mensagem}: andamento de tarefa longa em segundo plano.
+    andamentoTarefa = Signal(str)
     arrastando = Signal(str)
 
     def __init__(self, janela: QWidget):
@@ -401,6 +404,53 @@ class Ponte(QObject):
 
         self._gravados.add(str(Path(destino).resolve()))
         return para_json({"ok": True, "caminho": str(destino)})
+
+    @Slot(str)
+    def revisarYara(self, modelo: str) -> None:
+        """
+        Explica e revisa a regra YARA com o modelo local.
+
+        A parte calculada (condição, fatos, fraquezas) sai mesmo com o
+        Ollama desligado; a do modelo, quando ele responde.
+        """
+        resultado = self._resultado
+        if resultado is None or resultado.regra_yara is None:
+            self.tarefaConcluida.emit(
+                para_json({"id": "revisao_yara", "ok": False, "erro": "nenhuma regra YARA gerada"})
+            )
+            return
+
+        ultimo = [0.0]
+
+        def andamento(estado) -> None:
+            # Mesmo limite do resumo: o modelo emite dezenas de pedaços por
+            # segundo, e ninguém lê nessa velocidade.
+            agora = time.monotonic()
+            if estado.concluido or agora - ultimo[0] >= 0.5:
+                ultimo[0] = agora
+                self.andamentoTarefa.emit(
+                    para_json(
+                        {
+                            "id": "revisao_yara",
+                            "mensagem": f"{estado.pedacos} tokens em {estado.segundos:.0f}s",
+                        }
+                    )
+                )
+
+        def revisar():
+            from core.revisao_yara import revisar_regra
+
+            revisao = revisar_regra(
+                resultado.regra_yara,
+                resultado,
+                modelo=modelo or "llama3.1:8b",
+                progresso=andamento,
+            )
+            dados = revisao.to_dict()
+            dados["sha256"] = resultado.sha256
+            return dados
+
+        self._em_segundo_plano("revisao_yara", revisar)
 
     # ------------------------------------------------------------
     # Sistema
