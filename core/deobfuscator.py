@@ -713,7 +713,7 @@ def desofuscar(
     ]
     resultado.iocs_revelados = detectar_iocs(revelados)
 
-    logger.info("desofuscacao concluida: %s", resultado.resumo())
+    logger.info("desofuscação concluída: %s", resultado.resumo())
     return resultado
 
 
@@ -754,7 +754,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     from core.string_extractor import ErroExtracao, extrair
 
     parser = argparse.ArgumentParser(
-        description="Detecta e reverte ofuscacao em strings (RabMapper)."
+        description="Detecta e reverte ofuscação em strings (RabMapper)."
     )
     parser.add_argument("arquivo", nargs="?", help="artefato a analisar")
     parser.add_argument("-s", "--string", help="desofusca uma string solta")
@@ -771,13 +771,13 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if args.string:
         achados = desofuscar_valor(args.string, pular_triagem=True)
         if not achados:
-            print("nenhuma decodificacao plausivel")
+            print("nenhuma decodificação plausível")
             return 0
         for a in achados:
             print(f"[{a.pontuacao:.2f}] {a.cadeia}")
             print(f"        {a.decodificado!r}")
             if a.ancoras:
-                print(f"        ancoras: {', '.join(a.ancoras)}")
+                print(f"        âncoras: {', '.join(a.ancoras)}")
         return 0
 
     if not args.arquivo:
@@ -804,7 +804,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             print(f"         de : {a.original[:70]}")
             print(f"         para: {a.decodificado[:70]!r}")
     else:
-        print("\nNenhuma ofuscacao detectada.")
+        print("\nNenhuma ofuscação detectada.")
 
     if resultado.iocs_revelados:
         print(f"\nIOCs revelados ({len(resultado.iocs_revelados)}):")

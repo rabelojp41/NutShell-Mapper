@@ -274,13 +274,13 @@ def test_conteudo_desofuscado_alimenta_o_mapeamento():
 
 def test_avisa_quando_nao_e_pe():
     resultado = mapear(_extracao("qualquer coisa"))
-    assert any("nao e um PE" in a for a in resultado.avisos)
+    assert any("não é um PE" in a for a in resultado.avisos)
 
 
 def test_avisa_quando_stix_ausente():
     resultado = mapear(_extracao(), info_pe=_pe(["CreateRemoteThread"]))
     assert resultado.fonte == "catalogo_local"
-    assert any("STIX oficial nao carregado" in a for a in resultado.avisos)
+    assert any("STIX oficial não carregado" in a for a in resultado.avisos)
 
 
 def test_artefato_inocente_nao_gera_tecnica():
@@ -362,14 +362,14 @@ def test_grupos_que_usam_tecnica(attack):
 
 
 def test_cache_ausente_sem_download_levanta_erro(tmp_path):
-    with pytest.raises(ErroMitre, match="nao encontrado"):
+    with pytest.raises(ErroMitre, match="não encontrado"):
         MitreAttack(tmp_path / "nao_existe.json").carregar(baixar_se_faltar=False)
 
 
 def test_cache_corrompido_da_mensagem_util(tmp_path):
     ruim = tmp_path / "ruim.json"
     ruim.write_text("{ isso nao e json", encoding="utf-8")
-    with pytest.raises(ErroMitre, match="invalido"):
+    with pytest.raises(ErroMitre, match="inválido"):
         MitreAttack(ruim).carregar(baixar_se_faltar=False)
 
 
@@ -393,7 +393,7 @@ def test_sempre_sete_estagios():
 def test_estagio_vazio_e_reportado_como_sem_evidencia():
     """Nao ocorreu e diferente de nao foi observado."""
     kc = montar(ResultadoMapeamento())
-    assert any("ausencia de evidencia nao e evidencia de ausencia" in a for a in kc.avisos)
+    assert any("ausência de evidência não é evidência de ausência" in a for a in kc.avisos)
 
 
 def test_tecnica_com_duas_taticas_aparece_em_dois_estagios():
@@ -432,13 +432,13 @@ def test_traducao_editorial_e_sinalizada():
 
     estagio = kc.por_estagio(Estagio.ACOES_NO_OBJETIVO)
     assert "discovery" in estagio.taticas_ambiguas
-    assert any("traducao editorial" in a for a in kc.avisos)
+    assert any("tradução editorial" in a for a in kc.avisos)
 
 
 def test_tatica_desconhecida_vira_aviso():
     tecnica = TecnicaMapeada("T9999", "Inventada", ["tatica-que-nao-existe"])
     kc = montar(ResultadoMapeamento(tecnicas=[tecnica]))
-    assert any("sem estagio correspondente" in a for a in kc.avisos)
+    assert any("sem estágio correspondente" in a for a in kc.avisos)
 
 
 def test_cobertura():
@@ -470,7 +470,7 @@ def test_resumo_em_texto_cobre_os_sete_estagios():
     for estagio in ORDEM_DOS_ESTAGIOS:
         assert estagio.value in texto
     assert "T1486" in texto
-    assert "sem evidencia neste artefato" in texto
+    assert "sem evidência neste artefato" in texto
 
 
 def test_killchain_serializavel():
@@ -650,7 +650,7 @@ def test_falha_total_sem_cache_levanta_erro(tmp_path, monkeypatch, sem_espera_mi
         "requests.get",
         lambda *a, **k: (_ for _ in ()).throw(ConnectionResetError("sem rede")),
     )
-    with pytest.raises(ErroMitre, match="nao ha cache local"):
+    with pytest.raises(ErroMitre, match="não há cache local"):
         MitreAttack(tmp_path / "ausente.json").baixar()
 
 
@@ -680,7 +680,7 @@ def test_taticas_de_evasao_caem_na_instalacao(tatica):
     kc = montar(ResultadoMapeamento(tecnicas=[tecnica]))
 
     assert tecnica in kc.por_estagio(Estagio.INSTALACAO).tecnicas
-    assert not any("sem estagio correspondente" in a for a in kc.avisos)
+    assert not any("sem estágio correspondente" in a for a in kc.avisos)
 
 
 def test_nome_de_subtecnica_e_composto_com_o_pai(attack):

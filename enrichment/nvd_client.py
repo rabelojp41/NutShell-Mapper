@@ -70,9 +70,9 @@ class ResultadoNVD:
     @property
     def resumo(self) -> str:
         if not self.consultado:
-            return "nao consultado"
+            return "não consultado"
         if not self.encontrado:
-            return "nao consta na NVD"
+            return "não consta na NVD"
         if not self.vetor:
             return "sem vetor CVSS publicado"
         return f"{self.score_base:.1f} ({self.severidade})"
@@ -115,7 +115,7 @@ class NVDClient(ClienteBase):
         import re
 
         if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", cve):
-            resultado.erro = f"'{cve}' nao esta no formato CVE-AAAA-NNNN"
+            resultado.erro = f"'{cve}' não está no formato CVE-AAAA-NNNN"
             return resultado
 
         # A URL base ja e o endpoint completo; o ClienteBase concatena um
@@ -135,8 +135,8 @@ class NVDClient(ClienteBase):
         if not vulnerabilidades:
             resultado.encontrado = False
             resultado.observacoes.append(
-                "CVE nao consta na NVD. Pode ser identificador reservado, "
-                "recem-atribuido ou invalido"
+                "CVE não consta na NVD. Pode ser identificador reservado, "
+                "recém-atribuído ou inválido"
             )
             return resultado
 
@@ -180,19 +180,19 @@ class NVDClient(ClienteBase):
 
         if not resultado.vetor:
             resultado.observacoes.append(
-                "a NVD conhece esta CVE mas ainda nao publicou vetor CVSS"
+                "a NVD conhece esta CVE mas ainda não publicou vetor CVSS"
             )
         elif resultado.versao_cvss == "2.0":
             resultado.observacoes.append(
-                "apenas CVSS 2.0 disponivel: a escala difere da 3.x e os "
-                "scores nao sao comparaveis diretamente"
+                "apenas CVSS 2.0 disponível: a escala difere da 3.x e os "
+                "scores não são comparáveis diretamente"
             )
 
         # A ressalva que impede a leitura errada do numero.
         resultado.observacoes.append(
-            "este score descreve a vulnerabilidade, nao este artefato. O "
+            "este score descreve a vulnerabilidade, não este artefato. O "
             "artefato apenas referencia a CVE; se ele a explora, e com que "
-            "sucesso, a analise estatica nao determina"
+            "sucesso, a análise estática não determina"
         )
 
         return resultado

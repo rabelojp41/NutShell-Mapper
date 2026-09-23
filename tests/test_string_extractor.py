@@ -87,7 +87,7 @@ def test_ip_invalido_nao_e_detectado():
 @pytest.mark.parametrize(
     "ip,trecho_observacao",
     [
-        ("0.1.2.3", "invalida"),
+        ("0.1.2.3", "inválida"),
         ("127.5.5.5", "loopback"),
         ("169.254.10.1", "link-local"),
         ("239.255.255.250", "multicast"),
@@ -430,7 +430,7 @@ def test_saida_vazia_do_floss_tem_mensagem_honesta(tmp_path, monkeypatch):
     resultado = extrair(amostra, formato="sc32")
 
     assert resultado.usou_floss is False  # caiu no extrator nativo
-    assert any("nenhuma string estatica" in a for a in resultado.avisos)
+    assert any("nenhuma string estática" in a for a in resultado.avisos)
     assert not any("codigo de saida 0" in a for a in resultado.avisos)
     # O extrator nativo salvou a analise.
     assert resultado.strings

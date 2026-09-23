@@ -125,13 +125,13 @@ class ResumoIA:
             return ""
         base = (
             f"Resumo gerado por modelo de linguagem local ({self.modelo}), "
-            "a partir dos achados desta analise. E texto de apoio, nao "
-            "evidencia: as secoes deste relatorio sao a fonte."
+            "a partir dos achados desta análise. É texto de apoio, não "
+            "evidência: as seções deste relatório são a fonte."
         )
         if self.invencoes:
             base += (
-                f" ATENCAO: {len(self.invencoes)} afirmacao(oes) do texto nao "
-                "correspondem a nenhum achado e estao listadas abaixo."
+                f" ATENÇÃO: {len(self.invencoes)} afirmação(ões) do texto não "
+                "correspondem a nenhum achado e estão listadas abaixo."
             )
         return base
 
@@ -348,8 +348,8 @@ def verificar(texto: str, r: Any) -> list[Invencao]:
                     tipo="tecnica",
                     valor=citada,
                     explicacao=(
-                        "citada no resumo mas nao esta entre as tecnicas "
-                        "mapeadas nesta analise"
+                        "citada no resumo mas não está entre as técnicas "
+                        "mapeadas nesta análise"
                     ),
                 )
             )
@@ -370,7 +370,7 @@ def verificar(texto: str, r: Any) -> list[Invencao]:
                     tipo="grupo",
                     valor=citado,
                     explicacao=(
-                        "citado no resumo mas nao esta entre os candidatos "
+                        "citado no resumo mas não está entre os candidatos "
                         "levantados"
                     ),
                 )
@@ -395,7 +395,7 @@ def verificar(texto: str, r: Any) -> list[Invencao]:
                     tipo="ioc",
                     valor=citado,
                     explicacao=(
-                        "indicador citado no resumo mas nao encontrado no "
+                        "indicador citado no resumo mas não encontrado no "
                         "artefato"
                     ),
                 )
@@ -424,8 +424,8 @@ def verificar(texto: str, r: Any) -> list[Invencao]:
                 tipo="familia",
                 valor=familia,
                 explicacao=(
-                    "familia de malware citada no resumo sem nenhuma fonte "
-                    "desta analise ter feito essa identificacao"
+                    "família de malware citada no resumo sem nenhuma fonte "
+                    "desta análise ter feito essa identificação"
                 ),
             )
         )
@@ -504,18 +504,18 @@ class ClienteOllama:
             # remedio e diferente. O executavel no disco separa os dois.
             if not _executavel_ollama():
                 return False, (
-                    "O Ollama nao esta instalado. Baixe em ollama.com/download "
+                    "O Ollama não está instalado. Baixe em ollama.com/download "
                     f"e depois rode: ollama pull {self.modelo}"
                 )
             return False, (
-                f"O Ollama esta instalado, mas nao respondeu em {self.url} "
+                f"O Ollama está instalado, mas não respondeu em {self.url} "
                 f"({type(erro).__name__}). Abra o aplicativo Ollama."
             )
 
         modelos = [m.get("name", "") for m in resposta.json().get("models", [])]
         if not modelos:
             return False, (
-                "Ollama esta rodando mas nao tem nenhum modelo. "
+                "Ollama está rodando mas não tem nenhum modelo. "
                 f"Rode: ollama pull {self.modelo}"
             )
 
@@ -523,8 +523,8 @@ class ClienteOllama:
         base = self.modelo.split(":")[0]
         if not any(m == self.modelo or m.split(":")[0] == base for m in modelos):
             return False, (
-                f"modelo '{self.modelo}' nao encontrado. "
-                f"Disponiveis: {', '.join(modelos)}. "
+                f"modelo '{self.modelo}' não encontrado. "
+                f"Disponíveis: {', '.join(modelos)}. "
                 f"Para baixar: ollama pull {self.modelo}"
             )
 
@@ -585,7 +585,7 @@ class ClienteOllama:
                 try:
                     pedaco = json.loads(linha)
                 except ValueError:
-                    logger.debug("linha nao-JSON no fluxo do Ollama, ignorada")
+                    logger.debug("linha não-JSON no fluxo do Ollama, ignorada")
                     continue
 
                 if pedaco.get("error"):
@@ -738,7 +738,7 @@ def diagnosticar_ollama(
                 rodando=False,
                 modelo_pedido=modelo,
                 orientacao=(
-                    "O Ollama nao esta instalado. Baixe em ollama.com/download "
+                    "O Ollama não está instalado. Baixe em ollama.com/download "
                     f"e depois rode: ollama pull {modelo}"
                 ),
             )
@@ -750,7 +750,7 @@ def diagnosticar_ollama(
             executavel=executavel,
             modelo_pedido=modelo,
             orientacao=(
-                "O Ollama esta instalado, mas fechado. Abra o aplicativo "
+                "O Ollama está instalado, mas fechado. Abra o aplicativo "
                 "Ollama (ou rode: ollama serve) e verifique de novo."
             ),
         )
@@ -773,7 +773,7 @@ def diagnosticar_ollama(
             versao=versao,
             modelos=modelos,
             modelo_pedido=modelo,
-            orientacao=f"O Ollama esta aberto, mas sem o modelo. Rode: ollama pull {modelo}",
+            orientacao=f"O Ollama está aberto, mas sem o modelo. Rode: ollama pull {modelo}",
         )
 
     return DiagnosticoOllama(
@@ -842,16 +842,16 @@ def gerar_resumo(
 
     if resumo.invencoes:
         logger.warning(
-            "resumo do LLM contem %d afirmacao(oes) sem respaldo nos achados",
+            "resumo do LLM contém %d afirmação(ões) sem respaldo nos achados",
             len(resumo.invencoes),
         )
         resumo.avisos.append(
-            f"{len(resumo.invencoes)} afirmacao(oes) do resumo nao "
-            "correspondem a nenhum achado desta analise"
+            f"{len(resumo.invencoes)} afirmação(ões) do resumo não "
+            "correspondem a nenhum achado desta análise"
         )
 
     logger.info(
-        "resumo gerado em %.1fs (%d invencoes detectadas)",
+        "resumo gerado em %.1fs (%d invenções detectadas)",
         resumo.duracao_segundos,
         len(resumo.invencoes),
     )
@@ -861,12 +861,12 @@ def gerar_resumo(
 def resumir_em_texto(resumo: ResumoIA) -> str:
     """Rendericao para o CLI e o relatorio."""
     if not resumo.gerado:
-        return f"Resumo por IA nao gerado: {resumo.erro or 'motivo desconhecido'}"
+        return f"Resumo por IA não gerado: {resumo.erro or 'motivo desconhecido'}"
 
     linhas = [resumo.texto, "", resumo.ressalva]
 
     if resumo.invencoes:
-        linhas += ["", "Afirmacoes sem respaldo nos achados:"]
+        linhas += ["", "Afirmações sem respaldo nos achados:"]
         linhas += [f"  ! {i}" for i in resumo.invencoes]
 
     return "\n".join(linhas)

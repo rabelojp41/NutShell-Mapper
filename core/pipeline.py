@@ -396,7 +396,7 @@ def analisar(
         resultado.cancelado = executor.foi_cancelado
         if resultado.cancelado:
             resultado.avisos.append(
-                "analise cancelada antes da extracao: nenhum dado foi produzido"
+                "análise cancelada antes da extração: nenhum dado foi produzido"
             )
         resultado.concluido_em = datetime.now(timezone.utc).isoformat()
         resultado.duracao_segundos = time.monotonic() - inicio
@@ -443,8 +443,8 @@ def analisar(
         )
         if attack is None:
             resultado.avisos.append(
-                "STIX do ATT&CK indisponivel: o mapeamento usou o catalogo "
-                "local e a atribuicao de grupo nao pode ser feita"
+                "STIX do ATT&CK indisponível: o mapeamento usou o catálogo "
+                "local e a atribuição de grupo não pode ser feita"
             )
 
     resultado.mapeamento = executor.rodar(
@@ -493,8 +493,8 @@ def analisar(
         # Dizer isso, em vez de deixar o campo parecer ter funcionado.
         resultado.avisos.append(
             f"CVE informada ({opcoes.cve[:40]}), mas sem vetor CVSS e sem "
-            "consulta externa: o score nao foi calculado. Ligue a consulta "
-            "externa (a NVD nao precisa de chave) ou informe o vetor"
+            "consulta externa: o score não foi calculado. Ligue a consulta "
+            "externa (a NVD não precisa de chave) ou informe o vetor"
         )
 
     # ---------- 9. Enriquecimento externo ----------
@@ -504,7 +504,7 @@ def analisar(
     else:
         resultado.avisos.append(
             "enriquecimento externo desabilitado: nenhum dado foi enviado a "
-            "servico de terceiros"
+            "serviço de terceiros"
         )
 
     # ---------- 10. Resumo por IA local ----------
@@ -539,8 +539,8 @@ def analisar(
         )
         if resultado.resumo_ia is not None and resultado.resumo_ia.invencoes:
             resultado.avisos.append(
-                f"o resumo por IA contem {len(resultado.resumo_ia.invencoes)} "
-                "afirmacao(oes) sem respaldo nos achados; veja a secao do resumo"
+                f"o resumo por IA contém {len(resultado.resumo_ia.invencoes)} "
+                "afirmação(ões) sem respaldo nos achados; veja a seção do resumo"
             )
 
     # ---------- Encerramento ----------
@@ -550,9 +550,9 @@ def analisar(
     resultado.duracao_segundos = time.monotonic() - inicio
 
     executor.concluidas = executor.total
-    executor.anunciar(Estagio.CONCLUIDO, "analise concluida")
+    executor.anunciar(Estagio.CONCLUIDO, "análise concluída")
 
-    logger.info("analise concluida: %s", resultado.resumo())
+    logger.info("análise concluída: %s", resultado.resumo())
     return resultado
 
 
@@ -589,7 +589,7 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
     manual = (getattr(resultado.opcoes, "cve", "") or "").strip().upper()
     if manual and not RE_CVE_MANUAL.fullmatch(manual):
         resultado.avisos.append(
-            f"CVE informada ignorada: '{manual[:40]}' nao tem o formato CVE-AAAA-NNNN"
+            f"CVE informada ignorada: '{manual[:40]}' não tem o formato CVE-AAAA-NNNN"
         )
         manual = ""
 
@@ -626,7 +626,7 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
 
     if melhor is None:
         resultado.avisos.append(
-            f"CVE ({', '.join(cves[:3])}), mas a NVD nao devolveu "
+            f"CVE ({', '.join(cves[:3])}), mas a NVD não devolveu "
             "vetor CVSS para nenhuma delas"
         )
         return None
@@ -634,18 +634,18 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
     if usou_manual:
         origem = (
             "vetor obtido da NVD para a CVE informada pelo analista. O score "
-            "descreve a vulnerabilidade, nao este arquivo"
+            "descreve a vulnerabilidade, não este arquivo"
         )
     else:
         if len(citadas) > 1:
             resultado.avisos.append(
-                f"{len(citadas)} CVEs citadas no artefato; o CVSS exibido e o da "
-                f"mais severa ({melhor.cve}). As demais estao na lista de IOCs"
+                f"{len(citadas)} CVEs citadas no artefato; o CVSS exibido é o da "
+                f"mais severa ({melhor.cve}). As demais estão na lista de IOCs"
             )
         origem = (
             "vetor obtido automaticamente da NVD a partir de CVE citada pelo "
-            "artefato. O score descreve a vulnerabilidade, nao este arquivo: "
-            "que ele a explore, e com que sucesso, a analise estatica nao diz"
+            "artefato. O score descreve a vulnerabilidade, não este arquivo: "
+            "que ele a explore, e com que sucesso, a análise estática não diz"
         )
 
     cvss = cvss_calculator.calcular(melhor.vetor, melhor.cve)
@@ -679,7 +679,7 @@ def _enriquecer(
         cliente = virustotal_client.criar(config)
         if cliente is None:
             resultado.avisos.append(
-                "VirusTotal pulado: chave nao configurada ou enriquecimento "
+                "VirusTotal pulado: chave não configurada ou enriquecimento "
                 "desabilitado no .env"
             )
             return []
@@ -699,7 +699,7 @@ def _enriquecer(
         cliente = shodan_client.criar(config)
         if cliente is None:
             resultado.avisos.append(
-                "Shodan pulado: chave nao configurada ou enriquecimento "
+                "Shodan pulado: chave não configurada ou enriquecimento "
                 "desabilitado no .env"
             )
             return []
@@ -715,7 +715,7 @@ def _enriquecer(
         cliente = malwarebazaar_client.criar(config)
         if cliente is None:
             resultado.avisos.append(
-                "MalwareBazaar pulado: Auth-Key nao configurada ou "
+                "MalwareBazaar pulado: Auth-Key não configurada ou "
                 "enriquecimento desabilitado no .env"
             )
             return None

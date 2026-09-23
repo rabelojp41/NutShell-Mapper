@@ -254,15 +254,15 @@ def montar(mapeamento: ResultadoMapeamento) -> ResultadoKillChain:
     vazios = [e.estagio.value for e in resultado.estagios if e.vazio]
     if vazios:
         resultado.avisos.append(
-            "sem evidencia neste artefato para: "
+            "sem evidência neste artefato para: "
             + ", ".join(vazios)
-            + ". Analise estatica de um unico arquivo cobre um recorte da "
-            "intrusao; ausencia de evidencia nao e evidencia de ausencia"
+            + ". Análise estática de um único arquivo cobre um recorte da "
+            "intrusão; ausência de evidência não é evidência de ausência"
         )
 
     if taticas_desconhecidas:
         resultado.avisos.append(
-            "taticas ATT&CK sem estagio correspondente na Kill Chain: "
+            "táticas ATT&CK sem estágio correspondente na Kill Chain: "
             + ", ".join(sorted(taticas_desconhecidas))
         )
 
@@ -271,10 +271,10 @@ def montar(mapeamento: ResultadoMapeamento) -> ResultadoKillChain:
     )
     if ambiguas_usadas:
         resultado.avisos.append(
-            "traducao editorial para: "
+            "tradução editorial para: "
             + ", ".join(ambiguas_usadas)
-            + ". ATT&CK e Kill Chain sao modelos distintos e a correspondencia "
-            "nao e formal"
+            + ". ATT&CK e Kill Chain são modelos distintos e a correspondência "
+            "não é formal"
         )
 
     logger.info("kill chain montada: %s", resultado.resumo())
@@ -290,10 +290,10 @@ def resumir_em_texto(kc: ResultadoKillChain) -> str:
         cabecalho = f"{estagio.ordem + 1}. {estagio.value} ({estagio.nome_original})"
 
         if preenchido.vazio:
-            linhas.append(f"{cabecalho}: sem evidencia neste artefato")
+            linhas.append(f"{cabecalho}: sem evidência neste artefato")
             continue
 
-        linhas.append(f"{cabecalho}: {len(preenchido.tecnicas)} tecnica(s)")
+        linhas.append(f"{cabecalho}: {len(preenchido.tecnicas)} técnica(s)")
         for t in preenchido.tecnicas:
             linhas.append(f"     [{t.confianca.value:5}] {t.tecnica_id}  {t.nome}")
 

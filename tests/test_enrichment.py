@@ -231,7 +231,7 @@ def test_sem_chave_nao_faz_requisicao():
     assert cliente.habilitado is False
     resposta = cliente._requisitar("/x")
     assert resposta.consultado is False
-    assert "nao configurada" in resposta.erro
+    assert "não configurada" in resposta.erro
 
 
 def test_404_e_consulta_bem_sucedida(sem_espera):
@@ -284,7 +284,7 @@ def test_hash_invalido_e_rejeitado_antes_da_rede():
     cliente.sessao.get = lambda *a, **k: pytest.fail("nao deveria ter feito requisicao")
 
     resultado = cliente.consultar_hash("nao_e_hash")
-    assert "nao e um hash" in resultado.erro
+    assert "não é um hash" in resultado.erro
 
 
 def test_consulta_de_hash_nao_envia_arquivo(sem_espera):
@@ -300,7 +300,7 @@ def test_consulta_de_hash_nao_envia_arquivo(sem_espera):
     url, kwargs = chamadas[0]
     assert url.endswith("/files/" + "a" * 64)
     assert "data" not in kwargs and "files" not in kwargs
-    assert any("nao foi enviado" in o for o in resultado.observacoes)
+    assert any("não foi enviado" in o for o in resultado.observacoes)
 
 
 def test_nao_existe_funcao_de_upload():
@@ -397,7 +397,7 @@ def test_hash_desconhecido_e_contextualizado(sem_espera):
     cliente = VirusTotalClient(CHAVE_FALSA)
     _responder(cliente, RespostaFalsa(status=404))
     r = cliente.consultar_hash("e" * 64)
-    assert any("ausencia nao indica nada" in o for o in r.observacoes)
+    assert any("ausência não indica nada" in o for o in r.observacoes)
 
 
 def test_taxa_de_deteccao_sem_divisao_por_zero():
@@ -489,7 +489,7 @@ def test_porta_de_cobalt_strike_e_sinalizada(sem_espera):
     assert r.portas_de_interesse
     assert "Cobalt Strike" in r.portas_de_interesse[0].observacao
     # Indicio, nunca prova.
-    assert any("nao prova" in o for o in r.observacoes)
+    assert any("não prova" in o for o in r.observacoes)
 
 
 def test_infraestrutura_compartilhada_e_sinalizada(sem_espera):

@@ -119,8 +119,8 @@ class ResultadoAtribuicao:
     avisos: list[str] = field(default_factory=list)
     # Repetido aqui para acompanhar o resultado onde quer que ele va.
     ressalva: str = (
-        "Sobreposicao de tecnicas ATT&CK nao e atribuicao. O resultado "
-        "indica quais grupos tem repertorio documentado compativel com o "
+        "Sobreposição de técnicas ATT&CK não é atribuição. O resultado "
+        "indica quais grupos têm repertório documentado compatível com o "
         "artefato, o que serve para orientar pesquisa, nunca para afirmar "
         "autoria."
     )
@@ -274,14 +274,14 @@ def atribuir(
 
     if attack is None or not attack.carregado:
         resultado.avisos.append(
-            "STIX do ATT&CK nao carregado: atribuicao de grupo requer o "
-            "bundle oficial, que contem os intrusion-sets"
+            "STIX do ATT&CK não carregado: atribuição de grupo requer o "
+            "bundle oficial, que contém os intrusion-sets"
         )
         return resultado
 
     observadas = {t.tecnica_id for t in mapeamento.tecnicas}
     if not observadas:
-        resultado.avisos.append("nenhuma tecnica foi mapeada: nada a cruzar")
+        resultado.avisos.append("nenhuma técnica foi mapeada: nada a cruzar")
         return resultado
 
     nomes_observados = {t.tecnica_id: t.nome for t in mapeamento.tecnicas}
@@ -291,7 +291,7 @@ def atribuir(
 
     if not indice:
         resultado.avisos.append(
-            "o bundle carregado nao contem relacoes grupo-tecnica"
+            "o bundle carregado não contém relações grupo-técnica"
         )
         return resultado
 
@@ -357,17 +357,17 @@ def atribuir(
         # --- Observacoes que contextualizam o numero ---
         if candidato.tecnicas_do_grupo > 100:
             candidato.observacoes.append(
-                f"grupo com repertorio grande ({candidato.tecnicas_do_grupo} "
-                "tecnicas documentadas): tende a intersectar qualquer artefato"
+                f"grupo com repertório grande ({candidato.tecnicas_do_grupo} "
+                "técnicas documentadas): tende a intersectar qualquer artefato"
             )
         if candidato.especificidade < 0.05:
             candidato.observacoes.append(
-                "menos de 5% do repertorio do grupo aparece aqui: "
-                "sobreposicao pode ser coincidencia"
+                "menos de 5% do repertório do grupo aparece aqui: "
+                "sobreposição pode ser coincidência"
             )
         if all(not t.exato for t in candidato.tecnicas_em_comum):
             candidato.observacoes.append(
-                "todos os casamentos foram via tecnica-pai, nenhum exato"
+                "todos os casamentos foram via técnica-pai, nenhum exato"
             )
 
         if candidato.pontuacao >= PONTUACAO_MINIMA:
@@ -383,17 +383,17 @@ def atribuir(
 
     if resultado.tecnicas_sem_grupo:
         resultado.avisos.append(
-            "tecnicas observadas que nenhum grupo do ATT&CK tem documentadas: "
+            "técnicas observadas que nenhum grupo do ATT&CK tem documentadas: "
             + ", ".join(resultado.tecnicas_sem_grupo)
         )
 
     if len(observadas) < 5:
         resultado.avisos.append(
-            f"apenas {len(observadas)} tecnicas observadas: base estreita "
-            "demais para qualquer comparacao significativa"
+            f"apenas {len(observadas)} técnicas observadas: base estreita "
+            "demais para qualquer comparação significativa"
         )
 
-    logger.info("atribuicao concluida: %s", resultado.resumo())
+    logger.info("atribuição concluída: %s", resultado.resumo())
     return resultado
 
 
@@ -402,20 +402,20 @@ def resumir_em_texto(resultado: ResultadoAtribuicao) -> str:
     linhas = [resultado.ressalva, ""]
 
     if not resultado.candidatos:
-        linhas.append("Nenhum grupo com sobreposicao significativa.")
+        linhas.append("Nenhum grupo com sobreposição significativa.")
         for aviso in resultado.avisos:
             linhas.append(f"  aviso: {aviso}")
         return "\n".join(linhas)
 
     for i, c in enumerate(resultado.candidatos, 1):
         linhas.append(
-            f"{i}. {c.nome} ({c.grupo_id})  pontuacao {c.pontuacao:.3f}  "
+            f"{i}. {c.nome} ({c.grupo_id})  pontuação {c.pontuacao:.3f}  "
             f"[{c.confianca.value}]"
         )
         linhas.append(
             f"     cobertura {c.cobertura:.2f} | especificidade "
             f"{c.especificidade:.2f} | {len(c.tecnicas_em_comum)} de "
-            f"{c.tecnicas_do_grupo} tecnicas do grupo"
+            f"{c.tecnicas_do_grupo} técnicas do grupo"
         )
         if c.aliases:
             linhas.append(f"     aliases: {', '.join(c.aliases[:6])}")

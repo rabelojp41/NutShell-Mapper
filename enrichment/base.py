@@ -195,7 +195,7 @@ class ClienteBase:
         resposta = RespostaEnriquecimento(fonte=self.nome)
 
         if not self.habilitado:
-            resposta.erro = f"chave de API do {self.nome} nao configurada"
+            resposta.erro = f"chave de API do {self.nome} não configurada"
             return resposta
 
         url = f"{self.url_base.rstrip('/')}/{caminho.lstrip('/')}"
@@ -246,7 +246,7 @@ class ClienteBase:
             if http.status_code in (401, 403):
                 resposta.erro = (
                     f"chave do {self.nome} rejeitada (HTTP {http.status_code}): "
-                    "verifique se ela e valida e tem permissao para esta consulta"
+                    "verifique se ela é válida e tem permissão para esta consulta"
                 )
                 return resposta
 
@@ -278,7 +278,7 @@ class ClienteBase:
             try:
                 resposta.dados = http.json()
             except ValueError:
-                resposta.erro = "resposta nao e JSON valido"
+                resposta.erro = "resposta não é JSON válido"
                 return resposta
 
             resposta.consultado = True

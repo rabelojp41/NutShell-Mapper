@@ -241,13 +241,13 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _str("DownloadString", 0.7),
             _re(r"-w\s+hidden|-windowstyle\s+hidden", 0.7),
         ),
-        "Execucao via PowerShell, frequentemente com comando codificado.",
+        "Execução via PowerShell, frequentemente com comando codificado.",
     ),
     RegraTecnica(
         "T1059.003", "Command and Scripting Interpreter: Windows Command Shell",
         ("execution",),
         (_str("cmd.exe", 0.5), _re(r"cmd(\.exe)?\s+/c\b", 0.7), _str("ComSpec", 0.4)),
-        "Execucao de comandos via interpretador do Windows.",
+        "Execução de comandos via interpretador do Windows.",
     ),
     RegraTecnica(
         "T1106", "Native API",
@@ -267,14 +267,14 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _api("RegSetValueExA", 0.4),
             _api("RegSetValueExW", 0.4),
         ),
-        "Persistencia por chave Run do registro.",
+        "Persistência por chave Run do registro.",
     ),
     RegraTecnica(
         "T1053.005", "Scheduled Task/Job: Scheduled Task",
         ("execution", "persistence", "privilege-escalation"),
         (_str("schtasks", 0.8), _str("TaskScheduler", 0.6),
          _str("ITaskService", 0.7), _re(r"/create\s+/tn", 0.8)),
-        "Persistencia por tarefa agendada.",
+        "Persistência por tarefa agendada.",
     ),
     RegraTecnica(
         "T1543.003", "Create or Modify System Process: Windows Service",
@@ -282,7 +282,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         (_api("CreateServiceA", 0.8), _api("CreateServiceW", 0.8),
          _api("OpenSCManagerA", 0.6), _api("OpenSCManagerW", 0.6),
          _api("StartServiceA", 0.6), _str("sc.exe create", 0.7)),
-        "Persistencia por servico do Windows.",
+        "Persistência por serviço do Windows.",
         minimo_de_sinais=2,
     ),
 
@@ -298,7 +298,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _api("SetThreadContext", 0.7),
             _api("OpenProcess", 0.3),
         ),
-        "Escrita de codigo na memoria de outro processo.",
+        "Escrita de código na memória de outro processo.",
         minimo_de_sinais=2,
     ),
     RegraTecnica(
@@ -306,7 +306,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         ("stealth", "privilege-escalation"),
         (_api("NtUnmapViewOfSection", 0.9), _api("ZwUnmapViewOfSection", 0.9),
          _api("SetThreadContext", 0.5), _api("ResumeThread", 0.3)),
-        "Substituicao da imagem de um processo suspenso.",
+        "Substituição da imagem de um processo suspenso.",
         minimo_de_sinais=2,
     ),
     RegraTecnica(
@@ -314,7 +314,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         ("stealth", "privilege-escalation"),
         (_api("LoadLibraryA", 0.2), _api("CreateRemoteThread", 0.6),
          _api("VirtualAllocEx", 0.5), _api("GetModuleHandleA", 0.2)),
-        "Carga de DLL no espaco de endereco de outro processo.",
+        "Carga de DLL no espaço de endereço de outro processo.",
         minimo_de_sinais=3,
     ),
     RegraTecnica(
@@ -324,7 +324,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _pe("alta_entropia", 0.7),
             Sinal(TipoSinal.DESOFUSCADO, "qualquer", 0.6),
         ),
-        "Conteudo ofuscado ou codificado para dificultar a analise.",
+        "Conteúdo ofuscado ou codificado para dificultar a análise.",
     ),
     RegraTecnica(
         "T1027.002", "Obfuscated Files or Information: Software Packing",
@@ -336,7 +336,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _pe("poucos_imports", 0.6),
             _re(r"^(UPX[0-9!]|\.aspack|\.themida|\.vmp\d|\.petite|MPRESS)", 0.9),
         ),
-        "Binario empacotado: codigo real so existe apos desempacotar.",
+        "Binário empacotado: código real só existe após desempacotar.",
         minimo_de_sinais=2,
     ),
     RegraTecnica(
@@ -347,14 +347,14 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _api("CryptStringToBinaryA", 0.7),
             _api("CryptStringToBinaryW", 0.7),
         ),
-        "Rotina propria de decodificacao do conteudo embutido.",
+        "Rotina própria de decodificação do conteúdo embutido.",
     ),
     RegraTecnica(
         "T1622", "Debugger Evasion",
         ("stealth", "discovery"),
         (_api("IsDebuggerPresent", 0.5), _api("CheckRemoteDebuggerPresent", 0.8),
          _api("NtQueryInformationProcess", 0.5), _api("OutputDebugStringA", 0.3)),
-        "Verificacao da presenca de depurador.",
+        "Verificação da presença de depurador.",
     ),
     RegraTecnica(
         "T1497.001", "Virtualization/Sandbox Evasion: System Checks",
@@ -365,34 +365,34 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _str("VBoxService", 0.9),
             _api("GetTickCount", 0.2),
         ),
-        "Deteccao de ambiente virtualizado ou de sandbox.",
+        "Detecção de ambiente virtualizado ou de sandbox.",
     ),
     RegraTecnica(
         "T1070.004", "Indicator Removal: File Deletion",
         ("stealth",),
         (_api("DeleteFileA", 0.4), _api("DeleteFileW", 0.4),
          _api("SHFileOperationW", 0.5), _re(r"del\s+/f\s+/q", 0.7)),
-        "Remocao de arquivos para apagar rastro.",
+        "Remoção de arquivos para apagar rastro.",
         minimo_de_sinais=2,
     ),
     RegraTecnica(
         "T1218.011", "System Binary Proxy Execution: Rundll32",
         ("stealth",),
         (_str("rundll32", 0.8),),
-        "Execucao de codigo atraves do rundll32.exe.",
+        "Execução de código através do rundll32.exe.",
     ),
     RegraTecnica(
         "T1218.010", "System Binary Proxy Execution: Regsvr32",
         ("stealth",),
         (_str("regsvr32", 0.8), _re(r"/i:.*scrobj\.dll", 0.9)),
-        "Execucao de codigo atraves do regsvr32.exe.",
+        "Execução de código através do regsvr32.exe.",
     ),
     RegraTecnica(
         "T1112", "Modify Registry",
         ("defense-impairment", "persistence"),
         (_api("RegSetValueExA", 0.5), _api("RegSetValueExW", 0.5),
          _api("RegCreateKeyExA", 0.4), _api("RegDeleteValueA", 0.5)),
-        "Alteracao de chaves do registro.",
+        "Alteração de chaves do registro.",
         minimo_de_sinais=2,
     ),
 
@@ -422,7 +422,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         ("credential-access",),
         (_str("lsass.exe", 0.9), _api("MiniDumpWriteDump", 0.8),
          _str("sekurlsa", 0.9)),
-        "Extracao de credenciais da memoria do LSASS.",
+        "Extração de credenciais da memória do LSASS.",
     ),
 
     # ---------- Discovery ----------
@@ -432,7 +432,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         (_api("GetSystemInfo", 0.4), _api("GetVersionExA", 0.4),
          _api("GetComputerNameA", 0.4), _api("GetComputerNameW", 0.4),
          _str("systeminfo", 0.5)),
-        "Coleta de informacoes do sistema.",
+        "Coleta de informações do sistema.",
         minimo_de_sinais=2,
     ),
     RegraTecnica(
@@ -441,7 +441,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         (_api("CreateToolhelp32Snapshot", 0.7), _api("Process32First", 0.7),
          _api("Process32Next", 0.7), _api("EnumProcesses", 0.7),
          _str("tasklist", 0.5)),
-        "Enumeracao dos processos em execucao.",
+        "Enumeração dos processos em execução.",
     ),
     RegraTecnica(
         "T1083", "File and Directory Discovery",
@@ -455,21 +455,21 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         "T1033", "System Owner/User Discovery",
         ("discovery",),
         (_api("GetUserNameA", 0.5), _api("GetUserNameW", 0.5), _str("whoami", 0.6)),
-        "Identificacao do usuario atual.",
+        "Identificação do usuário atual.",
     ),
     RegraTecnica(
         "T1016", "System Network Configuration Discovery",
         ("discovery",),
         (_api("GetAdaptersInfo", 0.6), _api("GetAdaptersAddresses", 0.6),
          _str("ipconfig", 0.6), _api("GetNetworkParams", 0.5)),
-        "Leitura da configuracao de rede.",
+        "Leitura da configuração de rede.",
     ),
     RegraTecnica(
         "T1010", "Application Window Discovery",
         ("discovery",),
         (_api("EnumWindows", 0.5), _api("GetForegroundWindow", 0.6),
          _api("GetWindowTextA", 0.5), _api("GetWindowTextW", 0.5)),
-        "Enumeracao de janelas abertas.",
+        "Enumeração de janelas abertas.",
         minimo_de_sinais=2,
     ),
 
@@ -486,20 +486,20 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         "T1115", "Clipboard Data",
         ("collection",),
         (_api("OpenClipboard", 0.7), _api("GetClipboardData", 0.8)),
-        "Leitura da area de transferencia.",
+        "Leitura da área de transferência.",
     ),
     RegraTecnica(
         "T1123", "Audio Capture",
         ("collection",),
         (_api("waveInOpen", 0.8), _api("waveInStart", 0.8)),
-        "Captura de audio do microfone.",
+        "Captura de áudio do microfone.",
     ),
     RegraTecnica(
         "T1560", "Archive Collected Data",
         ("collection",),
         (_str("RAR!", 0.5), _api("RtlCompressBuffer", 0.6),
          _re(r"\b(7za?|rar|zip)\.(exe|dll)\b", 0.5)),
-        "Compactacao dos dados antes da exfiltracao.",
+        "Compactação dos dados antes da exfiltração.",
     ),
 
     # ---------- Command and Control ----------
@@ -513,7 +513,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _re(r"^(GET|POST)\s+/", 0.5),
             _str("User-Agent:", 0.4),
         ),
-        "Comunicacao com o C2 por HTTP ou HTTPS.",
+        "Comunicação com o C2 por HTTP ou HTTPS.",
     ),
     RegraTecnica(
         "T1105", "Ingress Tool Transfer",
@@ -521,13 +521,13 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         (_api("URLDownloadToFileA", 0.9), _api("URLDownloadToFileW", 0.9),
          _api("InternetReadFile", 0.6), _api("WinHttpReadData", 0.6),
          _str("certutil -urlcache", 0.8)),
-        "Download de ferramenta ou estagio adicional.",
+        "Download de ferramenta ou estágio adicional.",
     ),
     RegraTecnica(
         "T1571", "Non-Standard Port",
         ("command-and-control",),
         (_re(r"https?://[^\s/]+:(?!80|443|8080)\d{2,5}", 0.7),),
-        "C2 em porta fora do padrao do protocolo.",
+        "C2 em porta fora do padrão do protocolo.",
     ),
     RegraTecnica(
         "T1132.001", "Data Encoding: Standard Encoding",
@@ -540,7 +540,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         ("command-and-control",),
         (_api("WSASocketA", 0.6), _api("socket", 0.4),
          _api("connect", 0.3), _api("send", 0.2)),
-        "Comunicacao direta por socket, sem protocolo de aplicacao.",
+        "Comunicação direta por socket, sem protocolo de aplicação.",
         minimo_de_sinais=3,
     ),
 
@@ -555,7 +555,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _re(r"\.(locked|encrypted|crypt|crypted|enc)\b", 0.6),
             _re(r"README.*DECRYPT|HOW.TO.DECRYPT", 0.9),
         ),
-        "Cifragem de dados da vitima (ransomware).",
+        "Cifragem de dados da vítima (ransomware).",
     ),
     RegraTecnica(
         "T1490", "Inhibit System Recovery",
@@ -566,14 +566,14 @@ CATALOGO: tuple[RegraTecnica, ...] = (
             _re(r"bcdedit.{0,30}recoveryenabled\s+no", 0.95),
             _str("Win32_ShadowCopy", 0.8),
         ),
-        "Destruicao de copias de sombra e pontos de restauracao.",
+        "Destruição de cópias de sombra e pontos de restauração.",
     ),
     RegraTecnica(
         "T1489", "Service Stop",
         ("impact",),
         (_re(r"net\s+stop\b", 0.6), _api("ControlService", 0.5),
          _re(r"taskkill\s+/f", 0.6)),
-        "Parada de servicos, tipica antes de cifrar dados.",
+        "Parada de serviços, típica antes de cifrar dados.",
     ),
 
     # ---------- Exfiltration ----------
@@ -582,7 +582,7 @@ CATALOGO: tuple[RegraTecnica, ...] = (
         ("exfiltration",),
         (_api("HttpSendRequestA", 0.4), _api("InternetWriteFile", 0.7),
          _re(r"(POST|PUT)\s+/(upload|gate|submit|data)", 0.7)),
-        "Envio dos dados coletados pelo proprio canal de C2.",
+        "Envio dos dados coletados pelo próprio canal de C2.",
         minimo_de_sinais=2,
     ),
 )
@@ -618,18 +618,18 @@ def _indicios_do_pe(info_pe: InfoPE | None) -> dict[str, str]:
     for s in info_pe.secoes:
         if s.alta_entropia:
             indicios.setdefault(
-                "alta_entropia", f"secao '{s.nome}' com entropia {s.entropia}"
+                "alta_entropia", f"seção '{s.nome}' com entropia {s.entropia}"
             )
         if s.nome_incomum:
             indicios.setdefault(
-                "nome_de_secao_incomum", f"secao '{s.nome}' fora do padrao"
+                "nome_de_secao_incomum", f"seção '{s.nome}' fora do padrão"
             )
         if s.gravavel_e_executavel:
-            indicios.setdefault("secao_wx", f"secao '{s.nome}' e W+X")
+            indicios.setdefault("secao_wx", f"seção '{s.nome}' é W+X")
 
     if len(info_pe.todas_as_apis()) < 10:
         indicios["poucos_imports"] = (
-            f"apenas {len(info_pe.todas_as_apis())} funcoes importadas"
+            f"apenas {len(info_pe.todas_as_apis())} funções importadas"
         )
 
     return indicios
@@ -659,7 +659,7 @@ def _casar_sinal(
             padrao = re.compile(sinal.padrao, re.IGNORECASE)
             for nome in nomes_de_secao:
                 if padrao.search(nome):
-                    return Evidencia(TipoSinal.PE, sinal.padrao, f"secao '{nome}'")
+                    return Evidencia(TipoSinal.PE, sinal.padrao, f"seção '{nome}'")
             return None
         if sinal.padrao in indicios:
             return Evidencia(TipoSinal.PE, sinal.padrao, indicios[sinal.padrao])
@@ -670,11 +670,11 @@ def _casar_sinal(
             return Evidencia(
                 TipoSinal.DESOFUSCADO,
                 sinal.padrao,
-                f"ofuscacao detectada: {', '.join(sorted(tecnicas_de_ofuscacao))}",
+                f"ofuscação detectada: {', '.join(sorted(tecnicas_de_ofuscacao))}",
             )
         if sinal.padrao in tecnicas_de_ofuscacao:
             return Evidencia(
-                TipoSinal.DESOFUSCADO, sinal.padrao, f"tecnica {sinal.padrao} detectada"
+                TipoSinal.DESOFUSCADO, sinal.padrao, f"técnica {sinal.padrao} detectada"
             )
         return None
 
@@ -750,8 +750,8 @@ def mapear(
 
     if not info_pe or not info_pe.e_pe:
         resultado.avisos.append(
-            "artefato nao e um PE: o mapeamento usou apenas strings, sem a "
-            "tabela de imports, que e a evidencia mais forte"
+            "artefato não é um PE: o mapeamento usou apenas strings, sem a "
+            "tabela de imports, que é a evidência mais forte"
         )
 
     for regra in CATALOGO:
@@ -801,16 +801,16 @@ def mapear(
         ]
         if nao_confirmadas:
             resultado.avisos.append(
-                "tecnicas do catalogo local ausentes no STIX carregado "
+                "técnicas do catálogo local ausentes no STIX carregado "
                 f"(possivelmente descontinuadas): {', '.join(nao_confirmadas)}"
             )
     else:
         resultado.avisos.append(
-            "STIX oficial nao carregado: nomes e taticas vem do catalogo "
-            "local e podem estar defasados em relacao a versao atual do ATT&CK"
+            "STIX oficial não carregado: nomes e táticas vêm do catálogo "
+            "local e podem estar defasados em relação à versão atual do ATT&CK"
         )
 
-    logger.info("mapeamento ATT&CK concluido: %s", resultado.resumo())
+    logger.info("mapeamento ATT&CK concluído: %s", resultado.resumo())
     return resultado
 
 
@@ -864,7 +864,7 @@ class MitreAttack:
             ErroMitre: falha de rede e nenhum cache utilizavel.
         """
         if self.cache_existe and not self.cache_vencido and not forcar:
-            logger.debug("cache do ATT&CK valido: %s", self.caminho_cache)
+            logger.debug("cache do ATT&CK válido: %s", self.caminho_cache)
             return self.caminho_cache
 
         self.caminho_cache.parent.mkdir(parents=True, exist_ok=True)
@@ -877,14 +877,14 @@ class MitreAttack:
 
             if self.cache_existe:
                 self.avisos.append(
-                    f"nao foi possivel atualizar o ATT&CK ({erro}); "
+                    f"não foi possível atualizar o ATT&CK ({erro}); "
                     "usando o cache existente, possivelmente defasado"
                 )
                 logger.warning("%s", self.avisos[-1])
                 return self.caminho_cache
 
             raise ErroMitre(
-                f"falha ao baixar o bundle STIX e nao ha cache local: {erro}"
+                f"falha ao baixar o bundle STIX e não há cache local: {erro}"
             ) from erro
 
         # Grava num temporario e so entao substitui: uma queda no meio
@@ -941,7 +941,7 @@ class MitreAttack:
                 # inteiro, e o que ja temos precisa ser descartado.
                 modo = "ab"
                 if ja_baixado and resposta.status_code != 206:
-                    logger.debug("servidor ignorou o Range; recomecando do inicio")
+                    logger.debug("servidor ignorou o Range; recomeçando do início")
                     modo = "wb"
 
                 with temporario.open(modo) as destino:
@@ -965,7 +965,7 @@ class MitreAttack:
             if self._json_completo(temporario):
                 return
 
-            erro_final = ErroMitre("o arquivo baixado esta truncado")
+            erro_final = ErroMitre("o arquivo baixado está truncado")
             logger.warning("arquivo truncado na tentativa %d; retomando", tentativa)
 
         raise erro_final or ErroMitre("falha desconhecida no download")
@@ -1003,7 +1003,7 @@ class MitreAttack:
         if not self.cache_existe:
             if not baixar_se_faltar:
                 raise ErroMitre(
-                    f"cache do ATT&CK nao encontrado em {self.caminho_cache}. "
+                    f"cache do ATT&CK não encontrado em {self.caminho_cache}. "
                     "Rode MitreAttack().baixar() ou passe baixar_se_faltar=True"
                 )
             self.baixar()
@@ -1013,7 +1013,7 @@ class MitreAttack:
                 self._dados = json.load(arquivo)
         except (json.JSONDecodeError, OSError) as erro:
             raise ErroMitre(
-                f"cache do ATT&CK invalido ({erro}); apague {self.caminho_cache} "
+                f"cache do ATT&CK inválido ({erro}); apague {self.caminho_cache} "
                 "e baixe de novo"
             ) from erro
 
@@ -1033,7 +1033,7 @@ class MitreAttack:
                 break
 
         logger.info(
-            "ATT&CK carregado: %d objetos indexados, versao %s",
+            "ATT&CK carregado: %d objetos indexados, versão %s",
             len(self._por_id),
             self.versao or "desconhecida",
         )
@@ -1134,5 +1134,5 @@ def carregar_attack(
     try:
         return MitreAttack(caminho_cache).carregar(baixar_se_faltar=baixar_se_faltar)
     except ErroMitre as erro:
-        logger.warning("ATT&CK indisponivel: %s", erro)
+        logger.warning("ATT&CK indisponível: %s", erro)
         return None

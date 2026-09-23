@@ -72,7 +72,7 @@ class Secao:
 
 
 def _sim_nao(valor: bool) -> str:
-    return "sim" if valor else "nao"
+    return "sim" if valor else "não"
 
 
 def _data_legivel(iso: str) -> str:
@@ -117,12 +117,12 @@ def _secao_identificacao(r: ResultadoAnalise) -> Secao:
             ]
         )
     elif r.info_pe:
-        dados.append(["Formato", f"nao e PE ({r.info_pe.erro})"])
+        dados.append(["Formato", f"não é PE ({r.info_pe.erro})"])
 
     dados.extend(
         [
             ["Analisado em", _data_legivel(r.iniciado_em)],
-            ["Duracao", f"{r.duracao_segundos:.1f}s"],
+            ["Duração", f"{r.duracao_segundos:.1f}s"],
         ]
     )
 
@@ -131,33 +131,33 @@ def _secao_identificacao(r: ResultadoAnalise) -> Secao:
     if r.info_pe and r.info_pe.e_pe and r.info_pe.timestamp_compilacao:
         linhas += [
             "",
-            "> O timestamp de compilacao e frequentemente falsificado por "
-            "malware. Vale como indicio, nao como fato.",
+            "> O timestamp de compilação é frequentemente falsificado por "
+            "malware. Vale como indício, não como fato.",
         ]
 
-    return Secao("Identificacao", linhas)
+    return Secao("Identificação", linhas)
 
 
 def _secao_sumario(r: ResultadoAnalise) -> Secao:
     """Sumario executivo: o que foi observado, em uma tela."""
-    linhas = ["### Sumario", ""]
+    linhas = ["### Sumário", ""]
     resumo = r.resumo()
 
     dados = [
-        ["Strings extraidas", resumo["strings"]],
+        ["Strings extraídas", resumo["strings"]],
         ["IOCs identificados", resumo["iocs"]],
-        ["Achados de desofuscacao", resumo["achados_desofuscacao"]],
-        ["Tecnicas ATT&CK", resumo["tecnicas"]],
-        ["Regra YARA valida", _sim_nao(resumo["yara_valida"])],
+        ["Achados de desofuscação", resumo["achados_desofuscacao"]],
+        ["Técnicas ATT&CK", resumo["tecnicas"]],
+        ["Regra YARA válida", _sim_nao(resumo["yara_valida"])],
     ]
 
     if r.mapeamento:
         altas = r.mapeamento.com_confianca_minima(Confianca.ALTA)
-        dados.append(["Tecnicas de alta confianca", len(altas)])
+        dados.append(["Técnicas de alta confiança", len(altas)])
     if r.kill_chain:
         dados.append(
             [
-                "Estagios da Kill Chain cobertos",
+                "Estágios da Kill Chain cobertos",
                 f"{len(r.kill_chain.estagios_cobertos)} de 7",
             ]
         )
@@ -178,12 +178,12 @@ def _secao_sumario(r: ResultadoAnalise) -> Secao:
     if r.extracao and not r.extracao.usou_floss:
         linhas += [
             "",
-            "> O FLOSS nao foi usado nesta analise. Apenas strings estaticas "
+            "> O FLOSS não foi usado nesta análise. Apenas strings estáticas "
             "foram recuperadas; strings montadas em runtime (stack, tight, "
-            "decoded) nao aparecem.",
+            "decoded) não aparecem.",
         ]
 
-    return Secao("Sumario", linhas)
+    return Secao("Sumário", linhas)
 
 
 def _secao_iocs(r: ResultadoAnalise) -> Secao:
@@ -200,17 +200,17 @@ def _secao_iocs(r: ResultadoAnalise) -> Secao:
         [i.confianca.value, i.tipo.value, i.valor[:90], i.observacao[:60] or "-"]
         for i in ordenados[:LIMITE_IOCS]
     ]
-    linhas.extend(_tabela(["Confianca", "Tipo", "Valor", "Observacao"], dados))
+    linhas.extend(_tabela(["Confiança", "Tipo", "Valor", "Observação"], dados))
 
     if len(ordenados) > LIMITE_IOCS:
         linhas += ["", f"_({len(ordenados) - LIMITE_IOCS} indicadores omitidos; "
-                       "a saida JSON traz todos.)_"]
+                       "a saída JSON traz todos.)_"]
 
     linhas += [
         "",
-        "> A confianca reflete quao inequivoco e o formato e o contexto do "
-        "indicador, nao se ele e malicioso. Um dominio de alta confianca e um "
-        "dominio bem identificado, que pode ser perfeitamente legitimo.",
+        "> A confiança reflete quão inequívoco é o formato e o contexto do "
+        "indicador, não se ele é malicioso. Um domínio de alta confiança é um "
+        "domínio bem identificado, que pode ser perfeitamente legítimo.",
     ]
 
     return Secao("Indicadores", linhas)
@@ -218,16 +218,16 @@ def _secao_iocs(r: ResultadoAnalise) -> Secao:
 
 def _secao_desofuscacao(r: ResultadoAnalise) -> Secao:
     if r.desofuscacao is None:
-        return Secao("Desofuscacao", [])
+        return Secao("Desofuscação", [])
 
-    linhas = ["### Desofuscacao", ""]
+    linhas = ["### Desofuscação", ""]
 
     if not r.desofuscacao.achados:
         linhas += [
-            f"Nenhuma ofuscacao detectada em {r.desofuscacao.candidatos_avaliados} "
+            f"Nenhuma ofuscação detectada em {r.desofuscacao.candidatos_avaliados} "
             "candidatos avaliados.",
         ]
-        return Secao("Desofuscacao", linhas)
+        return Secao("Desofuscação", linhas)
 
     dados = [
         [f"{a.pontuacao:.2f}", a.cadeia, a.original[:40], a.decodificado[:70]]
@@ -236,7 +236,7 @@ def _secao_desofuscacao(r: ResultadoAnalise) -> Secao:
     linhas.extend(_tabela(["Nota", "Cadeia", "Original", "Decodificado"], dados))
 
     if r.desofuscacao.iocs_revelados:
-        linhas += ["", "**IOCs que so existiam atras da ofuscacao:**", ""]
+        linhas += ["", "**IOCs que só existiam atrás da ofuscação:**", ""]
         linhas.extend(
             _tabela(
                 ["Tipo", "Valor"],
@@ -244,14 +244,14 @@ def _secao_desofuscacao(r: ResultadoAnalise) -> Secao:
             )
         )
 
-    return Secao("Desofuscacao", linhas)
+    return Secao("Desofuscação", linhas)
 
 
 def _secao_pe(r: ResultadoAnalise) -> Secao:
     if not r.info_pe or not r.info_pe.e_pe:
         return Secao("PE", [])
 
-    linhas = ["### Estrutura do PE", "", "**Secoes:**", ""]
+    linhas = ["### Estrutura do PE", "", "**Seções:**", ""]
 
     dados = [
         [
@@ -263,14 +263,14 @@ def _secao_pe(r: ResultadoAnalise) -> Secao:
         ]
         for s in r.info_pe.secoes
     ]
-    linhas.extend(_tabela(["Secao", "Entropia", "Tamanho", "Flags", "Nota"], dados))
+    linhas.extend(_tabela(["Seção", "Entropia", "Tamanho", "Flags", "Nota"], dados))
 
     if r.info_pe.imports:
         linhas += ["", "**DLLs importadas:** " + ", ".join(sorted(r.info_pe.imports))]
-        linhas += [f"", f"Total de {len(r.info_pe.todas_as_apis())} funcoes importadas."]
+        linhas += [f"", f"Total de {len(r.info_pe.todas_as_apis())} funções importadas."]
 
     if r.info_pe.indicios:
-        linhas += ["", "**Observacoes estruturais:**", ""]
+        linhas += ["", "**Observações estruturais:**", ""]
         linhas.extend(f"- {d}" for d in r.info_pe.indicios)
 
     return Secao("PE", linhas)
@@ -280,16 +280,16 @@ def _secao_mitre(r: ResultadoAnalise) -> Secao:
     if r.mapeamento is None:
         return Secao("ATT&CK", [])
 
-    linhas = ["### Tecnicas MITRE ATT&CK", ""]
+    linhas = ["### Técnicas MITRE ATT&CK", ""]
 
     if not r.mapeamento.tecnicas:
-        linhas.append("Nenhuma tecnica foi identificada com evidencia suficiente.")
+        linhas.append("Nenhuma técnica foi identificada com evidência suficiente.")
         return Secao("ATT&CK", linhas)
 
     fonte = (
-        f"STIX oficial (versao {r.mapeamento.versao_attack})"
+        f"STIX oficial (versão {r.mapeamento.versao_attack})"
         if r.mapeamento.fonte == "stix"
-        else "catalogo local (STIX nao carregado)"
+        else "catálogo local (STIX não carregado)"
     )
     linhas += [f"Fonte dos metadados: {fonte}.", ""]
 
@@ -297,16 +297,16 @@ def _secao_mitre(r: ResultadoAnalise) -> Secao:
         linhas.append(f"**{t.tecnica_id} — {t.nome}**  `[{t.confianca.value}]`")
         if t.descricao:
             linhas.append(f"  {t.descricao}")
-        linhas.append(f"  Taticas: {', '.join(t.taticas)}")
-        linhas.append("  Evidencia:")
+        linhas.append(f"  Táticas: {', '.join(t.taticas)}")
+        linhas.append("  Evidência:")
         for e in t.evidencias[:6]:
             linhas.append(f"    - {e.tipo.value}: `{e.trecho[:100]}`")
         linhas.append("")
 
     linhas += [
-        "> Uma tecnica listada significa que a **capacidade** foi observada no "
-        "artefato, nao que ela e efetivamente usada. Importar "
-        "`CreateRemoteThread` prova que a funcao esta na tabela de imports.",
+        "> Uma técnica listada significa que a **capacidade** foi observada no "
+        "artefato, não que ela é efetivamente usada. Importar "
+        "`CreateRemoteThread` prova que a função está na tabela de imports.",
     ]
 
     return Secao("ATT&CK", linhas)
@@ -321,18 +321,18 @@ def _secao_killchain(r: ResultadoAnalise) -> Secao:
     for estagio in r.kill_chain.estagios:
         nome = f"{estagio.estagio.ordem + 1}. {estagio.estagio.value}"
         if estagio.vazio:
-            linhas.append(f"**{nome}** — sem evidencia neste artefato")
+            linhas.append(f"**{nome}** — sem evidência neste artefato")
         else:
             ids = ", ".join(f"`{t.tecnica_id}`" for t in estagio.tecnicas)
             linhas.append(f"**{nome}** — {ids}")
 
     linhas += [
         "",
-        f"Cobertura: {len(r.kill_chain.estagios_cobertos)} de 7 estagios.",
+        f"Cobertura: {len(r.kill_chain.estagios_cobertos)} de 7 estágios.",
         "",
-        "> ATT&CK e Cyber Kill Chain sao modelos diferentes e a traducao entre "
-        "eles e aproximada. Estagio sem evidencia significa que este artefato "
-        "nao mostra sinal dele, e nao que a etapa nao ocorreu na intrusao.",
+        "> ATT&CK e Cyber Kill Chain são modelos diferentes e a tradução entre "
+        "eles é aproximada. Estágio sem evidência significa que este artefato "
+        "não mostra sinal dele, e não que a etapa não ocorreu na intrusão.",
     ]
 
     return Secao("Kill Chain", linhas)
@@ -340,15 +340,15 @@ def _secao_killchain(r: ResultadoAnalise) -> Secao:
 
 def _secao_atribuicao(r: ResultadoAnalise) -> Secao:
     if r.atribuicao is None:
-        return Secao("Atribuicao", [])
+        return Secao("Atribuição", [])
 
-    linhas = ["### Grupos com repertorio compativel", "", f"> {r.atribuicao.ressalva}", ""]
+    linhas = ["### Grupos com repertório compatível", "", f"> {r.atribuicao.ressalva}", ""]
 
     if not r.atribuicao.candidatos:
-        linhas.append("Nenhum grupo com sobreposicao significativa.")
+        linhas.append("Nenhum grupo com sobreposição significativa.")
         for aviso in r.atribuicao.avisos:
             linhas.append(f"- {aviso}")
-        return Secao("Atribuicao", linhas)
+        return Secao("Atribuição", linhas)
 
     dados = [
         [
@@ -363,7 +363,7 @@ def _secao_atribuicao(r: ResultadoAnalise) -> Secao:
     ]
     linhas.extend(
         _tabela(
-            ["Grupo", "ID", "Pontuacao", "Cobertura", "Especificidade", "Tecnicas"],
+            ["Grupo", "ID", "Pontuação", "Cobertura", "Especificidade", "Técnicas"],
             dados,
         )
     )
@@ -373,7 +373,7 @@ def _secao_atribuicao(r: ResultadoAnalise) -> Secao:
             linhas += ["", f"**{c.nome}:**"]
             linhas.extend(f"- {o}" for o in c.observacoes)
 
-    return Secao("Atribuicao", linhas)
+    return Secao("Atribuição", linhas)
 
 
 def _secao_yara(r: ResultadoAnalise) -> Secao:
@@ -391,7 +391,7 @@ def _secao_yara(r: ResultadoAnalise) -> Secao:
     if r.regra_yara.falsos_positivos:
         dados.append(["Falsos positivos", len(r.regra_yara.falsos_positivos)])
 
-    linhas.extend(_tabela(["Validacao", "Resultado"], dados))
+    linhas.extend(_tabela(["Validação", "Resultado"], dados))
 
     if r.regra_yara.avisos:
         linhas += ["", "**Avisos:**", ""]
@@ -428,7 +428,7 @@ def _secao_cvss(r: ResultadoAnalise) -> Secao:
     linhas += ["", "**Leitura do vetor:**", ""]
     linhas.extend(
         _tabela(
-            ["Metrica", "Valor"],
+            ["Métrica", "Valor"],
             [[m.nome, m.valor_legivel] for m in r.cvss.metricas],
         )
     )
@@ -451,8 +451,8 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
                 [
                     "### Enriquecimento externo",
                     "",
-                    "Nao executado. Nenhum dado deste artefato foi enviado a "
-                    "servico de terceiros.",
+                    "Não executado. Nenhum dado deste artefato foi enviado a "
+                    "serviço de terceiros.",
                 ],
             )
         return Secao("Enriquecimento", [])
@@ -473,12 +473,12 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
             for v in r.virustotal
         ]
         linhas.extend(
-            _tabela(["Tipo", "Indicador", "Deteccao", "Contexto", "Erro"], dados)
+            _tabela(["Tipo", "Indicador", "Detecção", "Contexto", "Erro"], dados)
         )
 
         arquivo = next((v for v in r.virustotal if v.tipo == "arquivo"), None)
         if arquivo and arquivo.deteccoes:
-            linhas += ["", "Deteccoes por motor:", ""]
+            linhas += ["", "Detecções por motor:", ""]
             itens = list(arquivo.deteccoes.items())[:LIMITE_DETECCOES_VT]
             linhas.extend(_tabela(["Motor", "Nome"], [[k, v] for k, v in itens]))
 
@@ -501,13 +501,13 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
             for n in r.nvd
         ]
         linhas.extend(
-            _tabela(["CVE", "CVSS", "Versao", "Publicada", "Descricao"], dados)
+            _tabela(["CVE", "CVSS", "Versão", "Publicada", "Descrição"], dados)
         )
         linhas += [
             "",
             "> O artefato apenas REFERENCIA estas vulnerabilidades. Se ele as "
-            "explora, e com que sucesso, a analise estatica nao determina - o "
-            "score descreve a falha, nao este arquivo.",
+            "explora, e com que sucesso, a análise estática não determina - o "
+            "score descreve a falha, não este arquivo.",
             "",
         ]
 
@@ -524,7 +524,7 @@ def _secao_enriquecimento(r: ResultadoAnalise) -> Secao:
             ]
             for s in r.shodan
         ]
-        linhas.extend(_tabela(["IP", "Estado", "Portas", "Organizacao", "Pais"], dados))
+        linhas.extend(_tabela(["IP", "Estado", "Portas", "Organização", "País"], dados))
 
         for s in r.shodan:
             for obs in s.observacoes:
@@ -550,7 +550,7 @@ def _secao_resumo_ia(r: ResultadoAnalise) -> Secao:
 
     if not r.resumo_ia.gerado:
         linhas.append(
-            f"Nao gerado: {r.resumo_ia.erro or 'motivo desconhecido'}"
+            f"Não gerado: {r.resumo_ia.erro or 'motivo desconhecido'}"
         )
         return Secao("Resumo por IA", linhas)
 
@@ -559,14 +559,14 @@ def _secao_resumo_ia(r: ResultadoAnalise) -> Secao:
     if r.resumo_ia.invencoes:
         linhas += [
             "",
-            "**Afirmacoes do texto acima sem respaldo nos achados:**",
+            "**Afirmações do texto acima sem respaldo nos achados:**",
             "",
         ]
         linhas.extend(f"- `{i.valor}` ({i.tipo}) — {i.explicacao}" for i in r.resumo_ia.invencoes)
         linhas += [
             "",
-            "> Estas afirmacoes foram detectadas automaticamente comparando o "
-            "texto com o que a analise observou. Desconsidere-as.",
+            "> Estas afirmações foram detectadas automaticamente comparando o "
+            "texto com o que a análise observou. Desconsidere-as.",
         ]
 
     return Secao("Resumo por IA", linhas)
@@ -580,12 +580,12 @@ def _secao_limitacoes(r: ResultadoAnalise) -> Secao:
     isso. Relatorio que omite o que faltou passa impressao de completude que
     ele nao tem.
     """
-    linhas = ["### Limitacoes desta analise", ""]
+    linhas = ["### Limitações desta análise", ""]
 
     linhas += [
-        "Esta e uma analise **estatica**: o artefato nao foi executado. "
-        "Comportamento que so se manifesta em execucao - trafego real de "
-        "rede, payload baixado, codigo desempacotado em memoria - nao esta "
+        "Esta é uma análise **estática**: o artefato não foi executado. "
+        "Comportamento que só se manifesta em execução - tráfego real de "
+        "rede, payload baixado, código desempacotado em memória - não está "
         "coberto aqui.",
         "",
     ]
@@ -596,7 +596,7 @@ def _secao_limitacoes(r: ResultadoAnalise) -> Secao:
         linhas.append("")
 
     if r.cancelado:
-        linhas += ["**A analise foi cancelada antes de terminar.**", ""]
+        linhas += ["**A análise foi cancelada antes de terminar.**", ""]
 
     avisos = r.todos_os_avisos()
     if avisos:
@@ -605,9 +605,9 @@ def _secao_limitacoes(r: ResultadoAnalise) -> Secao:
         linhas.append("")
 
     if not r.erros and not avisos and not r.cancelado:
-        linhas += ["Todas as etapas solicitadas foram concluidas sem aviso.", ""]
+        linhas += ["Todas as etapas solicitadas foram concluídas sem aviso.", ""]
 
-    return Secao("Limitacoes", linhas)
+    return Secao("Limitações", linhas)
 
 
 def montar_markdown(r: ResultadoAnalise) -> str:
@@ -615,7 +615,7 @@ def montar_markdown(r: ResultadoAnalise) -> str:
     nome = Path(r.caminho).name
 
     partes = [
-        f"# Relatorio de analise — {nome}",
+        f"# Relatório de análise — {nome}",
         "",
         f"_Gerado pelo RabMapper em {_data_legivel(r.concluido_em or r.iniciado_em)}_",
         "",
@@ -692,7 +692,7 @@ def salvar_pdf(r: ResultadoAnalise, destino: str | Path) -> Path:
         )
     except ImportError as erro:
         raise ErroRelatorio(
-            f"ReportLab nao esta instalado ({erro}); "
+            f"ReportLab não está instalado ({erro}); "
             "rode: pip install reportlab"
         ) from erro
 
@@ -846,7 +846,7 @@ def salvar_docx(r: ResultadoAnalise, destino: str | Path) -> Path:
         from docx.shared import Pt
     except ImportError as erro:
         raise ErroRelatorio(
-            f"python-docx nao esta instalado ({erro}); "
+            f"python-docx não está instalado ({erro}); "
             "rode: pip install python-docx"
         ) from erro
 
@@ -980,7 +980,7 @@ def gerar(
 
         if funcao is None:
             logger.warning("formato desconhecido: %s", formato)
-            r.avisos.append(f"formato de relatorio desconhecido: {formato}")
+            r.avisos.append(f"formato de relatório desconhecido: {formato}")
             continue
 
         extensao = "md" if chave == "markdown" else chave
@@ -989,6 +989,6 @@ def gerar(
         except Exception as erro:
             # Falta do ReportLab nao pode impedir a geracao do Markdown.
             logger.error("falha ao gerar %s: %s", chave, erro)
-            r.avisos.append(f"nao foi possivel gerar o relatorio {chave}: {erro}")
+            r.avisos.append(f"não foi possível gerar o relatório {chave}: {erro}")
 
     return gerados

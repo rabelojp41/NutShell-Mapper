@@ -60,7 +60,7 @@ def test_sem_stix_nao_atribui():
 def test_sem_tecnica_nao_atribui(attack):
     resultado = atribuir(ResultadoMapeamento(), attack)
     assert resultado.candidatos == []
-    assert any("nenhuma tecnica" in a for a in resultado.avisos)
+    assert any("nenhuma técnica" in a for a in resultado.avisos)
 
 
 def test_encontra_grupos_com_sobreposicao(attack):
@@ -160,8 +160,8 @@ def test_confianca_nunca_e_alta(attack):
 
 def test_ressalva_sempre_presente(attack):
     resultado = atribuir(_mapeamento("T1055", "T1071.001"), attack)
-    assert "nao e atribuicao" in resultado.ressalva
-    assert "nao e atribuicao" in atribuicao_em_texto(resultado)
+    assert "não é atribuição" in resultado.ressalva
+    assert "não é atribuição" in atribuicao_em_texto(resultado)
 
 
 def test_base_estreita_gera_aviso(attack):
@@ -333,7 +333,7 @@ def test_metricas_sao_traduzidas():
 
     assert por_sigla["AV"].valor_legivel == "Rede"
     assert por_sigla["AV"].nome == "Vetor de Ataque"
-    assert por_sigla["UI"].valor_legivel == "Necessaria"
+    assert por_sigla["UI"].valor_legivel == "Necessária"
     assert por_sigla["S"].valor_legivel == "Alterado"
     assert por_sigla["A"].valor_legivel == "Nenhum"
 

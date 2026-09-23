@@ -242,7 +242,7 @@ def test_stix_indisponivel_gera_aviso(artefato, tmp_path):
             caminho_cache_stix=str(tmp_path / "ausente.json"),
         ),
     )
-    assert any("STIX do ATT&CK indisponivel" in a for a in r.avisos)
+    assert any("STIX do ATT&CK indisponível" in a for a in r.avisos)
     assert r.mapeamento is not None  # o catalogo local salvou a etapa
 
 
@@ -268,9 +268,9 @@ def test_pipeline_com_stix_faz_atribuicao(artefato, cache_stix):
 def test_markdown_tem_todas_as_secoes(resultado):
     texto = rg.montar_markdown(resultado)
     for titulo in (
-        "Sumario", "Artefato", "Indicadores de comprometimento",
-        "Tecnicas MITRE ATT&CK", "Cyber Kill Chain", "Regra YARA",
-        "Limitacoes desta analise",
+        "Sumário", "Artefato", "Indicadores de comprometimento",
+        "Técnicas MITRE ATT&CK", "Cyber Kill Chain", "Regra YARA",
+        "Limitações desta análise",
     ):
         assert titulo in texto, f"secao ausente: {titulo}"
 
@@ -278,9 +278,9 @@ def test_markdown_tem_todas_as_secoes(resultado):
 def test_secao_de_limitacoes_e_obrigatoria(resultado):
     """Relatorio que omite o que faltou passa falsa impressao de completude."""
     texto = rg.montar_markdown(resultado)
-    assert "Limitacoes desta analise" in texto
-    assert "analise **estatica**" in texto
-    assert "nao foi executado" in texto
+    assert "Limitações desta análise" in texto
+    assert "análise **estática**" in texto
+    assert "não foi executado" in texto
 
 
 def test_falha_de_etapa_aparece_no_relatorio(artefato, monkeypatch):
@@ -301,13 +301,13 @@ def test_tecnica_nunca_aparece_sem_evidencia(resultado):
         posicao = texto.find(t.tecnica_id)
         assert posicao > 0
         # A evidencia vem logo depois do bloco da tecnica.
-        assert "Evidencia" in texto[posicao : posicao + 900]
+        assert "Evidência" in texto[posicao : posicao + 900]
 
 
 def test_ressalva_de_capacidade_esta_presente(resultado):
     texto = rg.montar_markdown(resultado)
     assert "capacidade" in texto
-    assert "nao que ela e efetivamente usada" in texto
+    assert "não que ela é efetivamente usada" in texto
 
 
 def test_ressalva_de_atribuicao_acompanha_os_grupos(artefato, cache_stix):
@@ -319,7 +319,7 @@ def test_ressalva_de_atribuicao_acompanha_os_grupos(artefato, cache_stix):
         ),
     )
     texto = rg.montar_markdown(r)
-    assert "nao e atribuicao" in texto
+    assert "não é atribuição" in texto
 
 
 def test_relatorio_diz_quando_nao_houve_consulta_externa(resultado):
@@ -330,7 +330,7 @@ def test_relatorio_diz_quando_nao_houve_consulta_externa(resultado):
 def test_aviso_de_floss_ausente(resultado):
     """Sem FLOSS o relatorio precisa dizer o que deixou de ver."""
     texto = rg.montar_markdown(resultado)
-    assert "O FLOSS nao foi usado" in texto
+    assert "O FLOSS não foi usado" in texto
 
 
 # ============================================================
@@ -368,7 +368,7 @@ def test_gera_docx(resultado, tmp_path):
     caminho = rg.salvar_docx(resultado, tmp_path / "r.docx")
     documento = Document(str(caminho))
     texto = "\n".join(p.text for p in documento.paragraphs)
-    assert "Limitacoes desta analise" in texto
+    assert "Limitações desta análise" in texto
 
 
 def test_nome_inclui_prefixo_do_hash(resultado, tmp_path):
@@ -409,7 +409,7 @@ def test_pipeline_vazio_ainda_gera_relatorio(tmp_path):
     """Resultado sem etapa nenhuma nao pode quebrar o gerador."""
     vazio = ResultadoAnalise(caminho="x.bin")
     texto = rg.montar_markdown(vazio)
-    assert "Limitacoes desta analise" in texto
+    assert "Limitações desta análise" in texto
     assert rg.salvar_pdf(vazio, tmp_path / "vazio.pdf").exists()
 
 
@@ -427,7 +427,7 @@ def test_cancelamento_antes_da_extracao_e_distinguivel(artefato):
     assert r.extracao is None
     assert r.cancelado is True
     assert r.erros == []  # cancelar nao e erro
-    assert any("cancelada antes da extracao" in a for a in r.avisos)
+    assert any("cancelada antes da extração" in a for a in r.avisos)
 
 
 # ============================================================
@@ -569,7 +569,7 @@ def test_score_da_nvd_vem_com_a_ressalva(artefato_com_cve, monkeypatch):
         artefato_com_cve,
         OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True),
     )
-    assert any("nao este arquivo" in a for a in r.cvss.avisos)
+    assert any("não este arquivo" in a for a in r.cvss.avisos)
 
     texto = rg.montar_markdown(r)
     assert "apenas REFERENCIA" in texto
@@ -660,7 +660,7 @@ def test_cve_informada_sem_consulta_externa_avisa(artefato, monkeypatch):
     )
     r = analisar(artefato, OpcoesAnalise(usar_floss=False, usar_stix=False, cve="CVE-2021-44228"))
     assert r.cvss is None
-    assert any("score nao foi calculado" in a for a in r.avisos)
+    assert any("score não foi calculado" in a for a in r.avisos)
 
 
 def test_cve_informada_com_formato_errado_e_ignorada_com_aviso(artefato, monkeypatch):

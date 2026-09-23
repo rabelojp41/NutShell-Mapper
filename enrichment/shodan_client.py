@@ -41,7 +41,7 @@ PORTAS_DE_INTERESSE: dict[int, str] = {
     1080: "proxy SOCKS",
     1337: "porta comum em backdoor",
     3389: "RDP exposto",
-    4444: "porta padrao de handler do Metasploit",
+    4444: "porta padrão de handler do Metasploit",
     4445: "porta comum de handler do Metasploit",
     5555: "ADB ou backdoor",
     5900: "VNC exposto",
@@ -49,8 +49,8 @@ PORTAS_DE_INTERESSE: dict[int, str] = {
     6667: "IRC, historicamente usado para C2 de botnet",
     8080: "HTTP alternativo, comum em painel de C2",
     8443: "HTTPS alternativo, comum em painel de C2",
-    9001: "porta comum de rele Tor",
-    50050: "porta padrao do team server do Cobalt Strike",
+    9001: "porta comum de relé Tor",
+    50050: "porta padrão do team server do Cobalt Strike",
 }
 
 # Provedores cuja infraestrutura e compartilhada: o que se ve e o provedor,
@@ -123,7 +123,7 @@ class ResultadoShodan:
     @property
     def resumo(self) -> str:
         if not self.consultado:
-            return "nao consultado"
+            return "não consultado"
         if not self.encontrado:
             return "sem registro no Shodan"
         return f"{len(self.portas)} porta(s) aberta(s)"
@@ -145,10 +145,10 @@ def ip_e_consultavel(ip: str) -> tuple[bool, str]:
     try:
         endereco = ipaddress.ip_address(ip.strip())
     except ValueError:
-        return False, f"'{ip}' nao e um endereco IP valido"
+        return False, f"'{ip}' não é um endereço IP válido"
 
     if endereco.is_private:
-        return False, "endereco privado (RFC 1918): fora do alcance do Shodan"
+        return False, "endereço privado (RFC 1918): fora do alcance do Shodan"
     if endereco.is_loopback:
         return False, "loopback"
     if endereco.is_link_local:
@@ -244,9 +244,9 @@ class ShodanClient(ClienteBase):
         if not resposta.util:
             if resposta.consultado and not resposta.encontrado:
                 resultado.observacoes.append(
-                    "sem registro no Shodan. O host pode nao ter servico "
-                    "exposto, estar atras de firewall, ou simplesmente ainda "
-                    "nao ter sido varrido"
+                    "sem registro no Shodan. O host pode não ter serviço "
+                    "exposto, estar atrás de firewall, ou simplesmente ainda "
+                    "não ter sido varrido"
                 )
             return resultado
 
@@ -290,20 +290,20 @@ class ShodanClient(ClienteBase):
             resultado.observacoes.append(
                 "portas associadas a ferramenta ofensiva: "
                 + ", ".join(f"{s.porta} ({s.observacao})" for s in de_interesse)
-                + ". Indicio, nao prova: qualquer servico pode usar qualquer porta"
+                + ". Indício, não prova: qualquer serviço pode usar qualquer porta"
             )
 
         if resultado.infraestrutura_compartilhada:
             resultado.observacoes.append(
                 f"host em infraestrutura compartilhada ({resultado.organizacao}): "
-                "o que se observa descreve o provedor, nao necessariamente o "
+                "o que se observa descreve o provedor, não necessariamente o "
                 "operador do artefato"
             )
 
         if resultado.vulnerabilidades:
             resultado.observacoes.append(
                 f"{len(resultado.vulnerabilidades)} CVE(s) associadas aos "
-                "servicos expostos"
+                "serviços expostos"
             )
 
         if resultado.ultima_atualizacao:
@@ -327,7 +327,7 @@ def criar(config=None) -> ShodanClient | None:
         from config.settings import CONFIG as config
 
     if not config.shodan_habilitado:
-        logger.info("Shodan desabilitado ou sem chave: consultas serao puladas")
+        logger.info("Shodan desabilitado ou sem chave: consultas serão puladas")
         return None
 
     return ShodanClient(

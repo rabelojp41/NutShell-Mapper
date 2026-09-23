@@ -569,7 +569,7 @@ def test_fluxo_com_invencao_marca_nao_confiavel(resultado, monkeypatch):
     assert resumo.gerado is True
     assert resumo.confiavel is False
     assert len(resumo.invencoes) == 2
-    assert "ATENCAO" in resumo.ressalva
+    assert "ATENÇÃO" in resumo.ressalva
     assert resumo.avisos
 
 
@@ -610,5 +610,5 @@ def test_resumo_serializavel(resultado, monkeypatch):
 
 def test_texto_quando_nao_foi_gerado():
     saida = resumir_em_texto(ResumoIA(erro="Ollama nao respondeu"))
-    assert "nao gerado" in saida
+    assert "não gerado" in saida
     assert "Ollama nao respondeu" in saida
