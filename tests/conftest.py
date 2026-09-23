@@ -218,6 +218,24 @@ def pytest_sessionfinish(session, exitstatus):
     """
     sys.stdout.flush()
     sys.stderr.flush()
+
+    if sys.platform == "win32":
+        # No Windows, os._exit ainda passa pelo ExitProcess, que avisa cada
+        # DLL carregada de que o processo acabou (DLL_PROCESS_DETACH). Com
+        # o QtWebEngine na suite, esse aviso as vezes pega o Chromium com
+        # threads ainda vivas e termina em "access violation" - exit 139
+        # DEPOIS de todos os testes passarem, de forma intermitente. No CI
+        # isso seria job vermelho aleatorio. TerminateProcess encerra sem
+        # avisar ninguem e preserva o codigo de saida. O relatorio JUnit ja
+        # foi gravado neste ponto: o plugin dele roda antes deste hook.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), int(exitstatus))
+
     os._exit(exitstatus)
 
 
