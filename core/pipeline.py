@@ -23,6 +23,7 @@ Duas regras que valem para o pipeline inteiro:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -73,6 +74,9 @@ CallbackCancelamento = Callable[[], bool]
 # modelo emite dezenas de pedacos por segundo e ninguem le nessa
 # velocidade; o que importa e nao ficar mudo.
 INTERVALO_ANDAMENTO_IA = 0.5
+
+# Formato de identificador CVE, para validar o que o analista digita.
+RE_CVE_MANUAL = re.compile(r"CVE-\d{4}-\d{4,7}")
 
 
 @dataclass
@@ -484,6 +488,14 @@ def analisar(
         )
     elif opcoes.enriquecer:
         resultado.cvss = executor.rodar(Estagio.CVSS, lambda: _cvss_da_nvd(resultado, config))
+    elif opcoes.cve:
+        # CVE sem vetor e sem consulta externa: nao ha de onde tirar o score.
+        # Dizer isso, em vez de deixar o campo parecer ter funcionado.
+        resultado.avisos.append(
+            f"CVE informada ({opcoes.cve[:40]}), mas sem vetor CVSS e sem "
+            "consulta externa: o score nao foi calculado. Ligue a consulta "
+            "externa (a NVD nao precisa de chave) ou informe o vetor"
+        )
 
     # ---------- 9. Enriquecimento externo ----------
 
@@ -567,7 +579,21 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
     from core.string_extractor import TipoIOC
     from enrichment import nvd_client
 
-    cves = [i.valor for i in resultado.iocs if i.tipo is TipoIOC.CVE]
+    citadas = [i.valor for i in resultado.iocs if i.tipo is TipoIOC.CVE]
+
+    # A CVE informada pelo analista vem primeiro e tem prioridade: e
+    # conhecimento de fora do arquivo (relatorio de incidente, sandbox) de
+    # que a amostra explora aquela falha, o que vale mais do que uma
+    # referencia solta nas strings. Antes ela era ignorada quando vinha sem
+    # vetor - o campo existia na tela e nao fazia nada.
+    manual = (getattr(resultado.opcoes, "cve", "") or "").strip().upper()
+    if manual and not RE_CVE_MANUAL.fullmatch(manual):
+        resultado.avisos.append(
+            f"CVE informada ignorada: '{manual[:40]}' nao tem o formato CVE-AAAA-NNNN"
+        )
+        manual = ""
+
+    cves = ([manual] if manual else []) + [c for c in citadas if c != manual]
     if not cves:
         return None
 
@@ -581,6 +607,7 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
 
     melhor = None
     melhor_score = -1.0
+    usou_manual = False
 
     with cliente:
         for cve in cves[:5]:  # teto: a NVD limita a 5 requisicoes por janela
@@ -589,29 +616,40 @@ def _cvss_da_nvd(resultado: ResultadoAnalise, config):
 
             if not consulta.encontrado or not consulta.vetor:
                 continue
-            if consulta.score_base > melhor_score:
+            if cve == manual:
+                # A informada pelo analista vence mesmo com score menor.
+                melhor, usou_manual = consulta, True
+                continue
+            if not usou_manual and consulta.score_base > melhor_score:
                 melhor_score = consulta.score_base
                 melhor = consulta
 
     if melhor is None:
         resultado.avisos.append(
-            f"CVE citada ({', '.join(cves[:3])}), mas a NVD nao devolveu "
+            f"CVE ({', '.join(cves[:3])}), mas a NVD nao devolveu "
             "vetor CVSS para nenhuma delas"
         )
         return None
 
-    if len(cves) > 1:
-        resultado.avisos.append(
-            f"{len(cves)} CVEs citadas no artefato; o CVSS exibido e o da "
-            f"mais severa ({melhor.cve}). As demais estao na lista de IOCs"
+    if usou_manual:
+        origem = (
+            "vetor obtido da NVD para a CVE informada pelo analista. O score "
+            "descreve a vulnerabilidade, nao este arquivo"
+        )
+    else:
+        if len(citadas) > 1:
+            resultado.avisos.append(
+                f"{len(citadas)} CVEs citadas no artefato; o CVSS exibido e o da "
+                f"mais severa ({melhor.cve}). As demais estao na lista de IOCs"
+            )
+        origem = (
+            "vetor obtido automaticamente da NVD a partir de CVE citada pelo "
+            "artefato. O score descreve a vulnerabilidade, nao este arquivo: "
+            "que ele a explore, e com que sucesso, a analise estatica nao diz"
         )
 
     cvss = cvss_calculator.calcular(melhor.vetor, melhor.cve)
-    cvss.avisos.append(
-        "vetor obtido automaticamente da NVD a partir de CVE citada pelo "
-        "artefato. O score descreve a vulnerabilidade, nao este arquivo: "
-        "que ele a explore, e com que sucesso, a analise estatica nao diz"
-    )
+    cvss.avisos.append(origem)
     return cvss
 
 

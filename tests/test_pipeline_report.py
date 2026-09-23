@@ -604,3 +604,73 @@ def test_ressalva_da_nvd_sai_sem_chave_de_api(artefato_com_cve, monkeypatch):
     assert "apenas REFERENCIA" in texto
     # O score aparece; e justamente por isso que a ressalva precisa estar.
     assert "10.0" in texto
+
+
+# ============================================================
+# CVE informada pelo analista
+# ============================================================
+
+
+def test_cve_informada_sem_vetor_busca_na_nvd(artefato, monkeypatch):
+    """
+    O campo de CVE da tela existia e nao fazia nada quando vinha sem
+    vetor: o pipeline so consultava as CVEs citadas nas strings.
+    """
+    from enrichment import nvd_client
+
+    falso = _NVDFalso()
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: falso)
+
+    r = analisar(
+        artefato,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True, cve="CVE-2021-44228"),
+    )
+    assert falso.consultadas == ["CVE-2021-44228"]
+    assert r.cvss is not None
+    assert r.cvss.cve == "CVE-2021-44228"
+    assert any("informada pelo analista" in a for a in r.cvss.avisos)
+
+
+def test_cve_informada_vence_a_citada_mesmo_com_score_menor(tmp_path, monkeypatch):
+    """
+    O analista sabe, por fonte externa, qual falha a amostra explora. Uma
+    referencia solta nas strings nao pode passar por cima disso so por ter
+    score maior.
+    """
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: _NVDFalso())
+    amostra = tmp_path / "cita.bin"
+    amostra.write_bytes(b"Exploit para CVE-2021-44228\n")
+
+    r = analisar(
+        amostra,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True, cve="cve-2017-0144"),
+    )
+    assert r.cvss.cve == "CVE-2017-0144"
+    assert r.cvss.score_base == 8.8
+
+
+def test_cve_informada_sem_consulta_externa_avisa(artefato, monkeypatch):
+    """Sem vetor e sem NVD nao ha score, e isso precisa ser dito."""
+    from enrichment import nvd_client
+
+    monkeypatch.setattr(
+        nvd_client, "criar", lambda *_a, **_k: pytest.fail("NVD nao deveria ser consultada")
+    )
+    r = analisar(artefato, OpcoesAnalise(usar_floss=False, usar_stix=False, cve="CVE-2021-44228"))
+    assert r.cvss is None
+    assert any("score nao foi calculado" in a for a in r.avisos)
+
+
+def test_cve_informada_com_formato_errado_e_ignorada_com_aviso(artefato, monkeypatch):
+    from enrichment import nvd_client
+
+    falso = _NVDFalso()
+    monkeypatch.setattr(nvd_client, "criar", lambda *_a, **_k: falso)
+    r = analisar(
+        artefato,
+        OpcoesAnalise(usar_floss=False, usar_stix=False, enriquecer=True, cve="log4shell"),
+    )
+    assert falso.consultadas == []
+    assert any("formato" in a for a in r.avisos)
