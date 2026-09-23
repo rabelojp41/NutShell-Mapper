@@ -71,3 +71,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ===== Musica do toca-discos: audio e capa de album tem dono =====
+midia/*
+!midia/LEIAME.md

@@ -23,12 +23,13 @@ O que esta janela faz alem de mostrar a pagina:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Qt, QUrl
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QUrl
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 PASTA_WEB = Path(__file__).resolve().parent / "web"
 PAGINA = PASTA_WEB / "index.html"
 COR_DE_FUNDO = "#0d0e12"
+NOME = "Nut-Shell Mapper"
 
 
 class PaginaTravada(QWebEnginePage):
@@ -68,7 +70,7 @@ class PaginaTravada(QWebEnginePage):
         return None
 
     def javaScriptConsoleMessage(self, nivel, mensagem, linha, origem):
-        # Erro de JavaScript vai para o log do RabMapper, onde da para ver.
+        # Erro de JavaScript vai para o log da ferramenta, onde da para ver.
         registrar = logger.warning if nivel >= QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel else logger.debug
         registrar("js %s:%s %s", Path(origem).name if origem else "?", linha, mensagem)
 
@@ -120,7 +122,7 @@ class FiltroDeArrasto(QObject):
 class JanelaWeb(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RabMapper")
+        self.setWindowTitle(NOME)
         self.resize(1360, 880)
         self.setMinimumSize(1060, 680)
 
@@ -161,10 +163,10 @@ class JanelaWeb(QMainWindow):
 
     def _instalar_filtro_no_desenho(self, _ok: bool) -> None:
         alvo = self.visao.focusProxy()
-        if alvo is not None and not alvo.property("_rabmapper_filtro"):
+        if alvo is not None and not alvo.property("_nutshell_filtro"):
             alvo.setAcceptDrops(True)
             alvo.installEventFilter(self._filtro)
-            alvo.setProperty("_rabmapper_filtro", True)
+            alvo.setProperty("_nutshell_filtro", True)
 
     def closeEvent(self, evento) -> None:
         self.ponte.encerrar()
@@ -197,19 +199,32 @@ def main() -> int:
     configurar_logging()
 
     # Em maquina virtual sem aceleracao grafica, o Chromium do QtWebEngine
-    # pode renderizar uma tela preta. RABMAPPER_SEM_GPU=1 forca o modo
+    # pode renderizar uma tela preta. NUTSHELL_SEM_GPU=1 forca o modo
     # de software - comum justamente no ambiente isolado de analise.
-    if os.environ.get("RABMAPPER_SEM_GPU") == "1":
+    if os.environ.get("NUTSHELL_SEM_GPU") == "1":
         os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
             os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") + " --disable-gpu"
         ).strip()
 
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     aplicacao = QApplication.instance() or QApplication(sys.argv)
-    aplicacao.setApplicationName("RabMapper")
+    aplicacao.setApplicationName(NOME)
 
     janela = JanelaWeb()
     janela.show()
+
+    # O toca-discos volta de onde parou: mesmo album, mesma faixa, e
+    # tocando, se estava tocando quando a janela fechou. Fica aqui, e nao
+    # na janela, para os testes (que criam a janela direto) nunca lerem o
+    # que ficou salvo nem sairem tocando musica.
+    ajustes = QSettings("NutShellMapper", "interface")
+    try:
+        janela.ponte.toca_discos.restaurar(json.loads(ajustes.value("toca_discos", "") or "{}"))
+    except (TypeError, ValueError):
+        logger.debug("lembranca do toca-discos ilegivel; ignorada")
+    aplicacao.aboutToQuit.connect(
+        lambda: ajustes.setValue("toca_discos", json.dumps(janela.ponte.toca_discos.lembranca()))
+    )
     return aplicacao.exec()
 
 

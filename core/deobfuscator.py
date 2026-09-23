@@ -754,7 +754,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     from core.string_extractor import ErroExtracao, extrair
 
     parser = argparse.ArgumentParser(
-        description="Detecta e reverte ofuscação em strings (RabMapper)."
+        description="Detecta e reverte ofuscação em strings (Nut-Shell Mapper)."
     )
     parser.add_argument("arquivo", nargs="?", help="artefato a analisar")
     parser.add_argument("-s", "--string", help="desofusca uma string solta")

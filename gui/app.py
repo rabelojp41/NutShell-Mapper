@@ -1,5 +1,5 @@
 """
-Janela principal do RabMapper.
+Janela principal do Nut-Shell Mapper.
 
 A interface e um analisador, nao um scanner: um artefato entra, e o
 resultado sai distribuido em abas de evidencia. Nao ha lista de alvos nem
@@ -147,7 +147,7 @@ class JanelaPrincipal(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RabMapper — analise de artefatos")
+        self.setWindowTitle("Nut-Shell Mapper — analise de artefatos")
         self.resize(1200, 800)
 
         self._arquivo: Path | None = None
@@ -214,7 +214,7 @@ class JanelaPrincipal(QMainWindow):
         layout.setSpacing(ESPACO["md"])
         layout.addStretch(1)
 
-        titulo = QLabel("RabMapper")
+        titulo = QLabel("Nut-Shell Mapper")
         titulo.setObjectName(TITULO)
         titulo.setAlignment(Qt.AlignCenter)
         layout.addWidget(titulo)
@@ -944,7 +944,7 @@ analista julgar, e alimentariam bloqueio automatico com ruido."""
         Oferece descompactar, deixando claro o que muda.
 
         Zipado, o arquivo nao e executavel por nada. Extraido, passa a ser
-        malware vivo em disco — e essa e a unica acao do RabMapper com esse
+        malware vivo em disco — e essa e a unica acao do Nut-Shell Mapper com esse
         efeito.
         """
         from enrichment.malwarebazaar_client import ErroMalwareBazaar
@@ -1055,8 +1055,8 @@ analista julgar, e alimentariam bloqueio automatico com ruido."""
     def _sobre(self) -> None:
         QMessageBox.about(
             self,
-            "Sobre o RabMapper",
-            "<h3>RabMapper</h3>"
+            "Sobre o Nut-Shell Mapper",
+            "<h3>Nut-Shell Mapper</h3>"
             "<p>Framework de analise estatica de artefatos e "
             "Cyber Threat Intelligence.</p>"
             "<p>Extracao de strings com FLOSS, desofuscacao, geracao de regra "
@@ -1096,7 +1096,7 @@ def main() -> int:
     configurar_logging()
 
     aplicacao = QApplication(sys.argv)
-    aplicacao.setApplicationName("RabMapper")
+    aplicacao.setApplicationName("Nut-Shell Mapper")
 
     # A folha vale para a aplicacao inteira, inclusive para os widgets
     # criados depois - o que importa aqui, ja que as abas de resultado so

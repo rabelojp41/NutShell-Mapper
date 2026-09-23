@@ -1,5 +1,5 @@
 # ============================================================
-# RabMapper - dependencias
+# Nut-Shell Mapper - dependencias
 # Python 3.10.x (OBRIGATORIO no Windows)
 #
 # Por que 3.10: flare-floss depende de binary2strings, uma extensao C++ que

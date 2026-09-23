@@ -1,5 +1,5 @@
 """
-Verificacao de ambiente do RabMapper.
+Verificacao de ambiente do Nut-Shell Mapper.
 
 Confirma que todas as dependencias criticas importam de fato antes de o
 pipeline ser executado. Falha cedo e com mensagem clara e melhor do que

@@ -1,5 +1,5 @@
 """
-RabMapper - interface de linha de comando.
+Nut-Shell Mapper - interface de linha de comando.
 
 Orquestra o pipeline completo de analise de artefatos. A logica de analise
 esta em core/pipeline.py; aqui ficam apenas o parsing de argumentos e a
@@ -44,7 +44,7 @@ from pathlib import Path
 # Qt, nao pelo coletor do Python.
 gc.disable()
 
-logger = logging.getLogger("rabmapper")
+logger = logging.getLogger("nutshell")
 
 
 # ============================================================
@@ -460,8 +460,8 @@ def construir_parser() -> argparse.ArgumentParser:
     from core.resumo_ia import MODELO_PADRAO
 
     parser = argparse.ArgumentParser(
-        prog="rabmapper",
-        description="RabMapper - analise estatica de artefatos e threat intelligence.",
+        prog="nutshell",
+        description="Nut-Shell Mapper - analise estatica de artefatos e threat intelligence.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "exemplos:\n"
@@ -636,7 +636,7 @@ def _verificar_interpretador() -> int:
     venv = raiz / ".venv" / ("Scripts" if sys.platform == "win32" else "bin") / nome
 
     print(
-        "erro: as dependencias do RabMapper nao estao disponiveis neste "
+        "erro: as dependencias do Nut-Shell Mapper nao estao disponiveis neste "
         "interpretador.\n",
         file=sys.stderr,
     )

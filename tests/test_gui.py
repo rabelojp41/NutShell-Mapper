@@ -236,7 +236,7 @@ def test_janela_abre_e_fecha(aplicacao):
 
     janela = JanelaPrincipal()
     try:
-        assert janela.windowTitle().startswith("RabMapper")
+        assert janela.windowTitle().startswith("Nut-Shell Mapper")
         # Sem arquivo selecionado, nao da para analisar.
         assert janela.botao_analisar.isEnabled() is False
         # Enriquecimento comeca desligado, por design.

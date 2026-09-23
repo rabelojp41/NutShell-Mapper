@@ -1,4 +1,4 @@
-# RabMapper
+# Nut-Shell Mapper
 
 Framework de **Cyber Threat Intelligence** em Python para analise estatica de
 artefatos suspeitos: extracao de strings, desofuscacao, geracao de regras YARA,
@@ -110,7 +110,7 @@ outras ferramentas).
 Consulta por hash traz o que o VirusTotal nao da bem: rotulo de familia
 consolidado, tags de campanha, metodo de entrega e as regras YARA da
 comunidade que casam com a amostra - uteis para comparar com a regra que o
-RabMapper gerou.
+Nut-Shell Mapper gerou.
 
 ```bash
 python main.py bazaar 3210e85897ab370c889b203224d906ddd5e8b1e997e5f61799b2da15b45e3e23
@@ -218,7 +218,7 @@ arquivo vira a conjuncao `file:name AND file:parent_directory_ref.path`,
 chave de registro vira `windows-registry-key:key`, e hash embutido vira
 `file:hashes` com o algoritmo deduzido do comprimento. Chave de execucao
 automatica e dos indicadores mais acionaveis que existem para caca em
-endpoint - o RabMapper ja a mapeia para T1547.001, e deixa-la de fora da
+endpoint - o Nut-Shell Mapper ja a mapeia para T1547.001, e deixa-la de fora da
 exportacao seria perder o achado no ultimo passo.
 
 O que ainda assim nao tem representacao no destino e reportado em vez de
@@ -237,7 +237,7 @@ fosse OU, contou 9 strings onde havia 10, chamou endereco Bitcoin de
 especificas. Por isso:
 
 - **A condicao e explicada pela ferramenta**, de forma exata: ela e gerada
-  pelo proprio RabMapper a partir de poucas pecas fixas.
+  pelo proprio Nut-Shell Mapper a partir de poucas pecas fixas.
 - **Os fatos e o risco de falso positivo de cada string sao calculados**
   (nome de API do Windows, infraestrutura que o atacante troca, string
   curta ou ubiqua), assim como as fraquezas da regra - por exemplo, quando
@@ -292,7 +292,20 @@ python main.py gui --classica
 ```
 
 Em maquina virtual sem aceleracao grafica, se a janela abrir preta, defina
-`RABMAPPER_SEM_GPU=1`.
+`NUTSHELL_SEM_GPU=1`.
+
+#### Toca-discos
+
+No canto da barra lateral fica um toca-discos: o vinil gira com a capa do
+album no selo, o braco desce quando a musica toca, e o album segue faixa a
+faixa, recomecando no fim. A lista abre a capa grande, as faixas, os outros
+albuns e o volume. Ao reabrir a janela, ele continua de onde parou.
+
+As musicas ficam em `midia/`, uma pasta por album no formato
+`Artista - Album`, com os arquivos de audio e uma imagem `capa.*` (detalhes
+em `midia/LEIAME.md`). A pasta fica fora do Git: musica e capa tem dono. O
+audio toca no Python (QtMultimedia); a pagina so manda "album N, faixa M",
+nunca um caminho de arquivo.
 
 ### Testes
 

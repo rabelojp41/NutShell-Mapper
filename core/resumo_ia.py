@@ -1,7 +1,7 @@
 """
 Resumo executivo gerado por LLM local, via Ollama.
 
-O relatorio do RabMapper e todo tabela: preciso, mas trabalhoso de ler para
+O relatorio do Nut-Shell Mapper e todo tabela: preciso, mas trabalhoso de ler para
 quem so quer saber "o que e este artefato". Um paragrafo em linguagem
 natural resolve isso - e e a unica parte do pipeline onde um modelo de
 linguagem ajuda de verdade.

@@ -452,3 +452,32 @@ def test_revisar_sem_analise_responde_com_erro(ponte):
     ponte.tarefaConcluida.connect(respostas.append)
     ponte.revisarYara("llama3.1:8b")
     assert json.loads(respostas[0]) == {"id": "revisao_yara", "ok": False, "erro": "nenhuma regra YARA gerada"}
+
+
+def test_nome_de_musica_nao_vira_codigo(janela):
+    """
+    Titulo de faixa e nome de album vem de nome de arquivo. No Linux um
+    nome de arquivo aceita < e >, entao eles passam pela mesma regra do
+    dado de malware.
+    """
+    carga = " ".join(CARGAS)
+    catalogo = {
+        "ok": True,
+        "pasta": carga,
+        "albuns": [
+            {"nome": carga, "artista": carga, "capa": None, "faixas": [carga, carga]},
+            {"nome": carga, "artista": "", "capa": None, "faixas": []},
+        ],
+        "estado": {"album": 0, "faixa": 1, "tocando": True, "posicao_ms": 1000,
+                   "duracao_ms": 5000, "volume": 50, "erro": carga},
+    }
+    _js(janela, f"receberCatalogo({json.dumps(catalogo)}); alternarListaDoDisco = async () => {{}};")
+    _js(janela, "disco.listaAberta = true; renderizarListaDoDisco()")
+    _esperar(150)
+
+    assert _js(janela, "typeof window.__invadido") == "undefined"
+    assert _js(janela, "document.querySelectorAll('#toca-discos script, #toca-discos iframe, #toca-discos [onerror], #toca-discos img').length") == 0
+    assert _js(janela, "document.querySelectorAll('.td-faixa').length") == 2
+    assert _js(janela, "document.querySelector('.td-titulo').textContent.includes('onerror=')") is True
+    maior = _js(janela, "Math.max(0, ...[...document.querySelectorAll('#toca-discos svg')].map(s => s.getBoundingClientRect().width))")
+    assert maior <= 32

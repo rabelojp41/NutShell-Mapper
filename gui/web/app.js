@@ -1,5 +1,5 @@
 /*
- * RabMapper - interface
+ * Nut-Shell Mapper - interface
  *
  * REGRA DE SEGURANCA QUE ATRAVESSA O ARQUIVO
  *
@@ -90,6 +90,12 @@ const ICONES = {
   parar: ["M7 7h10v10H7z"],
   pasta: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   recarregar: ["M20 11a8 8 0 1 0-2.3 5.7", "M20 5v6h-6"],
+  disco: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z", "M12 12h.01"],
+  pausar: ["M9 5v14", "M15 5v14"],
+  anterior: ["M17 6v12l-9-6z", "M7 6v12"],
+  proxima: ["M7 6v12l9-6z", "M17 6v12"],
+  lista: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
+  volume: ["M4 10v4h3l5 4V6L7 10z", "M16 9.5a3.5 3.5 0 0 1 0 5"],
 };
 
 function icone(nome) {
@@ -1724,7 +1730,7 @@ async function extrairAmostra() {
     tipo: "perigo",
     perigo: true,
     paragrafos: [
-      "Extrair grava o malware vivo em disco. É a única ação do RabMapper com esse efeito.",
+      "Extrair grava o malware vivo em disco. É a única ação da ferramenta com esse efeito.",
       "O arquivo sai sem extensão, para não abrir com duplo clique, mas continua sendo malware. O Windows ainda vai pedir uma última confirmação.",
     ],
     botao: "Continuar",
@@ -1794,7 +1800,7 @@ VISTAS.config = () => {
               estado.attackAtualizando ? "Baixando…" : amb.attack.em_cache ? "Atualizar" : "Baixar"))),
         h("span", { class: `status-servico ${amb.attack.em_cache ? "ok" : "falha"}` }, amb.attack.em_cache ? "Disponível" : "Ausente"))),
 
-    h("p", { class: "t3 mt-24", style: "font-size:12px" }, "RabMapper · análise estática de artefatos e threat intelligence. O arquivo analisado é lido, nunca executado."),
+    h("p", { class: "t3 mt-24", style: "font-size:12px" }, "Nut-Shell Mapper · análise estática de artefatos e threat intelligence. O arquivo analisado é lido, nunca executado."),
   );
 };
 
@@ -1850,13 +1856,328 @@ async function salvarYara() {
 }
 
 // ============================================================
+// Toca-discos
+// ============================================================
+//
+// O audio toca no Python; aqui e so o prato, o braco e os controles. O
+// deck e montado uma vez e depois so atualizado: recriar o vinil a cada
+// aviso de posicao zeraria o angulo do giro, e o disco daria um pulo.
+// Nomes de faixa e album vem de nome de arquivo e passam por h() como
+// todo o resto.
+
+const disco = {
+  catalogo: null,
+  estado: null,
+  el: null,
+  capaNoSelo: null,
+  listaAberta: false,
+  albumVisto: 0,
+  chaveDaLista: "",
+};
+
+function albumDoDisco(i = disco.estado?.album ?? 0) {
+  return disco.catalogo?.albuns?.[i] || null;
+}
+
+function receberCatalogo(c) {
+  if (!c?.ok) return;
+  disco.catalogo = c;
+  disco.estado = c.estado;
+  if (!disco.el) montarTocaDiscos();
+  disco.chaveDaLista = "";
+  atualizarTocaDiscos();
+}
+
+function montarTocaDiscos() {
+  const raiz = limpar(document.getElementById("toca-discos"));
+  const el = {};
+  el.selo = h("div", { class: "td-selo" });
+  el.braco = h("div", { class: "td-braco" }, h("div", { class: "td-cabeca" }));
+  el.prato = h(
+    "button",
+    { class: "td-prato", title: "Tocar ou pausar", onclick: () => ponte.discoAlternar() },
+    h("div", { class: "td-vinil" }, h("div", { class: "td-sulcos" }), el.selo, h("div", { class: "td-furo" })),
+    h("div", { class: "td-reflexo" }),
+    h("div", { class: "td-pivo" }),
+    el.braco,
+    h("div", { class: "td-luz" }),
+  );
+  el.titulo = h("div", { class: "td-titulo" });
+  el.artista = h("div", { class: "td-artista" });
+  el.tocar = h("button", { class: "td-botao td-principal", onclick: () => ponte.discoAlternar() });
+  el.anterior = h("button", { class: "td-botao", title: "Anterior", onclick: () => ponte.discoAnterior() }, icone("anterior"));
+  el.proxima = h("button", { class: "td-botao", title: "Próxima", onclick: () => ponte.discoProxima() }, icone("proxima"));
+  el.preenchido = h("div", { class: "td-preenchido" });
+  el.barra = h("div", { class: "td-barra", title: "Ir para este ponto", onclick: buscarNoDisco }, el.preenchido);
+  el.decorrido = h("span");
+  el.duracao = h("span");
+  el.lista = h("div", { class: "td-lista", role: "dialog", "aria-label": "Faixas", onclick: (e) => e.stopPropagation() });
+
+  raiz.append(
+    h(
+      "div",
+      { class: "td-deck" },
+      el.prato,
+      h(
+        "div",
+        { class: "td-info" },
+        el.titulo,
+        el.artista,
+        h(
+          "div",
+          { class: "td-controles" },
+          el.anterior,
+          el.tocar,
+          el.proxima,
+          h("button", { class: "td-botao td-abrir-lista", title: "Faixas e álbuns", onclick: (e) => { e.stopPropagation(); alternarListaDoDisco(); } }, icone("lista")),
+        ),
+      ),
+    ),
+    el.barra,
+    h("div", { class: "td-tempo" }, el.decorrido, el.duracao),
+    el.lista,
+  );
+  disco.el = el;
+}
+
+function atualizarTocaDiscos() {
+  const el = disco.el;
+  if (!el) return;
+  const e = disco.estado || {};
+  const album = albumDoDisco();
+  const temFaixa = !!album?.faixas?.length;
+  const raiz = document.getElementById("toca-discos");
+  raiz.classList.toggle("tocando", !!e.tocando);
+  raiz.classList.toggle("sem-faixa", !temFaixa);
+
+  // A capa e uma data URL grande: so troca a imagem quando o album muda.
+  const capa = album?.capa || "";
+  if (disco.capaNoSelo !== capa) {
+    limpar(el.selo);
+    if (capa) el.selo.appendChild(h("img", { src: capa, alt: "", draggable: "false" }));
+    disco.capaNoSelo = capa;
+  }
+
+  let titulo, subtitulo;
+  if (!album) {
+    titulo = "Nenhum disco";
+    subtitulo = "Coloque músicas em midia/";
+  } else if (!temFaixa) {
+    titulo = album.nome;
+    subtitulo = "Sem faixas ainda";
+  } else {
+    titulo = album.faixas[e.faixa] ?? album.faixas[0];
+    subtitulo = [album.artista, album.nome].filter(Boolean).join(" · ");
+  }
+  el.titulo.textContent = titulo;
+  el.titulo.title = titulo;
+  el.artista.textContent = e.erro || subtitulo;
+  el.artista.title = e.erro || subtitulo;
+  el.artista.classList.toggle("erro", !!e.erro);
+
+  limpar(el.tocar).appendChild(icone(e.tocando ? "pausar" : "play"));
+  el.tocar.title = e.tocando ? "Pausar" : "Tocar";
+  for (const b of [el.tocar, el.anterior, el.proxima, el.prato]) b.disabled = !temFaixa;
+
+  const duracao = e.duracao_ms || 0;
+  const posicao = Math.min(e.posicao_ms || 0, duracao);
+  el.preenchido.style.width = duracao ? `${(posicao / duracao) * 100}%` : "0%";
+  el.decorrido.textContent = duracao ? fmtFaixa(posicao) : "-:--";
+  el.duracao.textContent = duracao ? fmtFaixa(duracao) : "-:--";
+
+  // A lista so e refeita quando muda o que ela mostra, e nao a cada meio
+  // segundo de posicao: refazer levaria a rolagem de volta ao topo.
+  const chave = `${e.album}:${e.faixa}:${e.tocando}`;
+  if (disco.listaAberta && chave !== disco.chaveDaLista) renderizarListaDoDisco();
+}
+
+// 3:07, e nao 03:07: e assim que todo player mostra tempo de musica.
+function fmtFaixa(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function buscarNoDisco(ev) {
+  const duracao = disco.estado?.duracao_ms || 0;
+  if (!duracao) return;
+  const caixa = disco.el.barra.getBoundingClientRect();
+  const fracao = Math.min(1, Math.max(0, (ev.clientX - caixa.left) / caixa.width));
+  ponte.discoBuscar(Math.round(fracao * duracao));
+}
+
+async function alternarListaDoDisco() {
+  disco.listaAberta = !disco.listaAberta;
+  if (disco.listaAberta) {
+    disco.albumVisto = disco.estado?.album ?? 0;
+    // Abrir a lista rele a pasta: musica recem-copiada ja aparece.
+    receberCatalogo(await chamar("discoRecarregar"));
+  }
+  renderizarListaDoDisco();
+}
+
+function renderizarListaDoDisco() {
+  const el = disco.el;
+  if (!el) return;
+  const lista = limpar(el.lista);
+  lista.classList.toggle("aberta", disco.listaAberta);
+  if (!disco.listaAberta) return;
+
+  const e = disco.estado || {};
+  disco.chaveDaLista = `${e.album}:${e.faixa}:${e.tocando}`;
+  const albuns = disco.catalogo?.albuns || [];
+  const visto = Math.min(disco.albumVisto, Math.max(0, albuns.length - 1));
+  const album = albuns[visto];
+
+  if (!album) {
+    lista.append(
+      h("div", { class: "td-lista-nome" }, "Nenhum disco na pasta"),
+      h("p", { class: "td-lista-dica" }, "Crie uma pasta por álbum dentro de midia/, no formato “Artista - Álbum”, com os arquivos de áudio e uma imagem capa.jpg."),
+    );
+  } else {
+    lista.append(
+      album.capa
+        ? h("img", { class: "td-lista-capa", src: album.capa, alt: "", draggable: "false" })
+        : h("div", { class: "td-lista-capa td-sem-capa" }, icone("disco")),
+      h("div", { class: "td-lista-nome" }, album.nome),
+      album.artista && h("div", { class: "td-lista-artista" }, album.artista),
+    );
+    if (!album.faixas.length) {
+      lista.append(h("p", { class: "td-lista-dica" }, "Copie os arquivos de áudio para a pasta deste álbum e abra esta lista de novo."));
+    }
+    lista.append(
+      h(
+        "ol",
+        { class: "td-faixas" },
+        album.faixas.map((titulo, j) => {
+          const atual = visto === e.album && j === e.faixa;
+          return h(
+            "li",
+            {},
+            h(
+              "button",
+              { class: "td-faixa", "aria-current": atual ? "true" : null, onclick: () => chamar("discoEscolher", visto, j) },
+              atual && e.tocando
+                ? h("span", { class: "td-eq", "aria-hidden": "true" }, h("i"), h("i"), h("i"))
+                : h("span", { class: "td-num" }, j + 1),
+              h("span", { class: "td-faixa-titulo" }, titulo),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  if (albuns.length > 1) {
+    lista.append(
+      h("div", { class: "td-lista-secao" }, "Álbuns"),
+      h(
+        "div",
+        { class: "td-albuns" },
+        albuns.map((a, i) =>
+          h(
+            "button",
+            {
+              class: "td-album",
+              "aria-current": i === visto ? "true" : null,
+              title: [a.artista, a.nome].filter(Boolean).join(" - "),
+              onclick: () => { disco.albumVisto = i; renderizarListaDoDisco(); },
+            },
+            a.capa ? h("img", { src: a.capa, alt: "", draggable: "false" }) : icone("disco"),
+          ),
+        ),
+      ),
+    );
+  }
+
+  const volume = h("input", {
+    type: "range", min: "0", max: "100", step: "1", class: "td-volume", "aria-label": "Volume",
+    oninput: (ev) => ponte.discoVolume(Number(ev.target.value)),
+  });
+  volume.value = String(e.volume ?? 70);
+  lista.append(
+    h(
+      "div",
+      { class: "td-lista-rodape" },
+      icone("volume"),
+      volume,
+      h("button", { class: "td-botao", title: "Abrir a pasta de músicas", onclick: () => chamar("discoAbrirPasta") }, icone("pasta")),
+    ),
+  );
+}
+
+// ============================================================
+// Moscas
+// ============================================================
+//
+// Voo de mosca e zigue-zague com paradas: muda de direcao o tempo todo,
+// pousa um pouco, sai de novo. Por isso e JavaScript, e nao um caminho
+// fixo em CSS, que se repetiria igual e denunciaria o truque.
+
+const MOSCAS = 5;
+
+function soltarMoscas() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const campo = document.getElementById("moscas");
+  const sorteio = (min, max) => min + Math.random() * (max - min);
+  const moscas = Array.from({ length: MOSCAS }, () => {
+    const el = h("div", { class: "mosca" }, h("i"), h("i"));
+    campo.appendChild(el);
+    return {
+      el,
+      x: sorteio(0, campo.clientWidth || 800),
+      y: sorteio(0, campo.clientHeight || 600),
+      angulo: sorteio(0, 2 * Math.PI),
+      velocidade: sorteio(0.05, 0.12),
+      pousada: sorteio(0, 4000),
+      voo: 0,
+    };
+  });
+
+  let antes = performance.now();
+  function passo(agora) {
+    const dt = Math.min(50, agora - antes);
+    antes = agora;
+    const largura = campo.clientWidth;
+    const altura = campo.clientHeight;
+    for (const m of moscas) {
+      if (m.pousada > 0) {
+        m.pousada -= dt;
+        if (m.pousada <= 0) {
+          m.voo = sorteio(1200, 4500);
+          m.velocidade = sorteio(0.05, 0.12);
+          m.angulo += sorteio(-2, 2);
+        }
+      } else {
+        m.angulo += sorteio(-0.35, 0.35);
+        // De vez em quando, uma arrancada.
+        if (Math.random() < 0.01) m.velocidade = sorteio(0.15, 0.25);
+        m.velocidade += (0.08 - m.velocidade) * 0.02;
+        m.x += Math.cos(m.angulo) * m.velocidade * dt;
+        m.y += Math.sin(m.angulo) * m.velocidade * dt;
+        if (m.x < 8 || m.x > largura - 8) m.angulo = Math.PI - m.angulo;
+        if (m.y < 8 || m.y > altura - 8) m.angulo = -m.angulo;
+        m.voo -= dt;
+        if (m.voo <= 0) m.pousada = sorteio(1500, 6000);
+      }
+      m.x = Math.min(Math.max(m.x, 8), Math.max(8, largura - 8));
+      m.y = Math.min(Math.max(m.y, 8), Math.max(8, altura - 8));
+      m.el.classList.toggle("voando", m.pousada <= 0);
+      m.el.style.transform = `translate(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px) rotate(${(m.angulo + Math.PI / 2).toFixed(3)}rad)`;
+    }
+    requestAnimationFrame(passo);
+  }
+  requestAnimationFrame(passo);
+}
+
+// ============================================================
 // Inicio
 // ============================================================
 
 function conectar() {
   const simbolo = document.getElementById("marca-simbolo");
-  simbolo.appendChild(icone("simbolo"));
+  simbolo.appendChild(icone("disco"));
   renderizarRodape();
+  soltarMoscas();
 
   new QWebChannel(qt.webChannelTransport, async (canal) => {
     ponte = canal.objects.ponte;
@@ -1886,10 +2207,16 @@ function conectar() {
       }
     });
 
+    ponte.discoMudou.connect((json) => {
+      disco.estado = JSON.parse(json);
+      atualizarTocaDiscos();
+    });
+
     estado.ambiente = await chamar("estado");
     estado.opcoes.modelo_ia = estado.ambiente.modelo_padrao;
     renderizar();
     verificarOllamaSilencioso();
+    receberCatalogo(await chamar("discoCatalogo"));
   });
 }
 
@@ -1901,6 +2228,7 @@ function verificarOllamaSilencioso() {
 
 document.addEventListener("click", () => {
   if (estado.menuAberto) { estado.menuAberto = null; renderizarTopo(); }
+  if (disco.listaAberta) { disco.listaAberta = false; renderizarListaDoDisco(); }
 });
 
 document.addEventListener("keydown", (e) => {

@@ -1,5 +1,5 @@
 """
-Configuracao central do RabMapper.
+Configuracao central do Nut-Shell Mapper.
 
 Carrega o .env e expoe as configuracoes como um objeto tipado, em vez de
 espalhar os.getenv pelo codigo. Duas razoes praticas: o erro de digitar

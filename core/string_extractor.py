@@ -1,7 +1,7 @@
 """
 Extracao de strings e identificacao de IOCs.
 
-Este e o modulo-base do RabMapper: todos os outros (deobfuscator,
+Este e o modulo-base do Nut-Shell Mapper: todos os outros (deobfuscator,
 yara_generator, mitre_mapper) consomem o que sai daqui.
 
 Estrategia de extracao:
@@ -896,7 +896,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Extrai strings e IOCs de um artefato (RabMapper)."
+        description="Extrai strings e IOCs de um artefato (Nut-Shell Mapper)."
     )
     parser.add_argument("arquivo", help="caminho do artefato")
     parser.add_argument(

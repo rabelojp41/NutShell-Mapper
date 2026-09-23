@@ -440,7 +440,7 @@ def _montar_texto(
 
     # --- meta ---
     linhas.append("    meta:")
-    linhas.append('        autor = "RabMapper (gerada automaticamente)"')
+    linhas.append('        autor = "Nut-Shell Mapper (gerada automaticamente)"')
     linhas.append(f'        data = "{date.today().isoformat()}"')
     linhas.append(
         '        descricao = "Regra derivada das strings mais distintivas do artefato"'
@@ -588,7 +588,7 @@ def gerar(
 
     avisos.extend(_avisar_dado_do_analista(candidatas))
 
-    nome = _nome_de_regra(nome_regra or f"RabMapper_{caminho.stem}")
+    nome = _nome_de_regra(nome_regra or f"NutShell_{caminho.stem}")
     minimo = max(1, int(len(candidatas) * FRACAO_PARA_CASAR))
 
     # Uma lista so de avisos. Ela alimenta tanto o bloco meta da regra

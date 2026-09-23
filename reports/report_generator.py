@@ -617,7 +617,7 @@ def montar_markdown(r: ResultadoAnalise) -> str:
     partes = [
         f"# Relatório de análise — {nome}",
         "",
-        f"_Gerado pelo RabMapper em {_data_legivel(r.concluido_em or r.iniciado_em)}_",
+        f"_Gerado pelo Nut-Shell Mapper em {_data_legivel(r.concluido_em or r.iniciado_em)}_",
         "",
     ]
 
@@ -722,8 +722,8 @@ def salvar_pdf(r: ResultadoAnalise, destino: str | Path) -> Path:
         pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title=f"RabMapper — {Path(r.caminho).name}",
-        author="RabMapper",
+        title=f"Nut-Shell Mapper — {Path(r.caminho).name}",
+        author="Nut-Shell Mapper",
     )
 
     elementos: list = []

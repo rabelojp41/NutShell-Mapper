@@ -46,6 +46,7 @@ from PySide6.QtWidgets import QFileDialog, QWidget
 
 from core.pipeline import OpcoesAnalise
 from core.resumo_ia import MODELO_PADRAO
+from gui.toca_discos import TocaDiscos
 from gui.worker import ExecutorDeAnalise
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ class Ponte(QObject):
         falhou             : erro que impediu qualquer resultado
         tarefaConcluida    : {id, ok, dados | erro} de tarefa em segundo plano
         arrastando         : {ativo} enquanto um arquivo e arrastado por cima
+        discoMudou         : estado do toca-discos (faixa, tocando, posicao)
     """
 
     arquivoSelecionado = Signal(str)
@@ -184,6 +186,7 @@ class Ponte(QObject):
     # {id, mensagem}: andamento de tarefa longa em segundo plano.
     andamentoTarefa = Signal(str)
     arrastando = Signal(str)
+    discoMudou = Signal(str)
 
     def __init__(self, janela: QWidget):
         super().__init__(janela)
@@ -201,6 +204,9 @@ class Ponte(QObject):
         self._executor.progresso.connect(self._ao_progredir)
         self._executor.concluido.connect(self._ao_concluir)
         self._executor.falhou.connect(self._ao_falhar)
+
+        self.toca_discos = TocaDiscos(pai=self)
+        self.toca_discos.mudou.connect(self.discoMudou)
 
     # ------------------------------------------------------------
     # Arquivo
@@ -555,7 +561,7 @@ class Ponte(QObject):
         Descompacta a amostra baixada: e o que grava malware vivo em disco.
 
         Pede uma confirmacao nativa final, alem da que a pagina ja mostrou.
-        E a unica acao do RabMapper com esse efeito, e ela nao pode ser
+        E a unica acao do Nut-Shell Mapper com esse efeito, e ela nao pode ser
         disparada so por JavaScript.
         """
         from PySide6.QtWidgets import QMessageBox
@@ -633,10 +639,64 @@ class Ponte(QObject):
 
         threading.Thread(target=rodar, name=f"ponte-{identificador}", daemon=True).start()
 
+    # ------------------------------------------------------------
+    # Toca-discos
+    # ------------------------------------------------------------
+    #
+    # A pagina so manda indice e numero. Caminho de arquivo nunca vem do
+    # JavaScript: o toca-discos confere o indice contra a lista que ele
+    # mesmo montou a partir de midia/.
+
+    @Slot(result=str)
+    def discoCatalogo(self) -> str:
+        return para_json({"ok": True, **self.toca_discos.catalogo(), "estado": self.toca_discos.estado()})
+
+    @Slot(result=str)
+    def discoRecarregar(self) -> str:
+        self.toca_discos.recarregar()
+        return self.discoCatalogo()
+
+    @Slot()
+    def discoAlternar(self) -> None:
+        self.toca_discos.alternar()
+
+    @Slot()
+    def discoProxima(self) -> None:
+        self.toca_discos.proxima()
+
+    @Slot()
+    def discoAnterior(self) -> None:
+        self.toca_discos.anterior()
+
+    @Slot(int, int, result=str)
+    def discoEscolher(self, album: int, faixa: int) -> str:
+        if not self.toca_discos.escolher(album, faixa):
+            return _erro("faixa inexistente")
+        return para_json({"ok": True})
+
+    @Slot(int)
+    def discoBuscar(self, milissegundos: int) -> None:
+        self.toca_discos.buscar(milissegundos)
+
+    @Slot(int)
+    def discoVolume(self, volume: int) -> None:
+        self.toca_discos.definir_volume(volume)
+
+    @Slot(result=str)
+    def discoAbrirPasta(self) -> str:
+        pasta = self.toca_discos.pasta
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+        except OSError as erro:
+            return _erro(f"nao foi possivel criar a pasta de musica: {erro}")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))
+        return para_json({"ok": True})
+
     def encerrar(self) -> None:
         """Chamado no fechamento da janela."""
         if self._executor.rodando:
             self._executor.cancelar()
+        self.toca_discos.parar()
 
 
 def _erro(mensagem: str) -> str:

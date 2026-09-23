@@ -712,7 +712,7 @@ def test_nome_ja_composto_nao_e_duplicado(attack):
 
 def test_cache_padrao_nao_depende_da_pasta_de_onde_se_roda(tmp_path, monkeypatch):
     """
-    Relativo, o caminho do cache seguia a pasta atual: rodar o RabMapper de
+    Relativo, o caminho do cache seguia a pasta atual: rodar o Nut-Shell Mapper de
     outro lugar não achava o bundle e baixava ~50 MB no meio da análise.
     """
     from pathlib import Path

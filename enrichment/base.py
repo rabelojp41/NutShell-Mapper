@@ -159,7 +159,7 @@ class ClienteBase:
         self.tentativas = max(1, tentativas)
         self.limitador = LimitadorDeTaxa(rate_limit_por_minuto)
         self.sessao = requests.Session()
-        self.sessao.headers.update({"User-Agent": "RabMapper/1.0"})
+        self.sessao.headers.update({"User-Agent": "NutShellMapper/1.0"})
 
     @property
     def habilitado(self) -> bool:

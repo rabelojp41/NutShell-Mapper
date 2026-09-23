@@ -53,7 +53,7 @@ URL_STIX_ENTERPRISE = (
 VALIDADE_DO_CACHE = timedelta(days=30)
 
 # Ancorado na raiz do projeto, e não na pasta de onde o comando roda. Como
-# caminho relativo, rodar o RabMapper de outra pasta não achava o cache e
+# caminho relativo, rodar o Nut-Shell Mapper de outra pasta não achava o cache e
 # disparava o download de ~50 MB no meio da análise.
 CAMINHO_CACHE_PADRAO = (
     Path(__file__).resolve().parent.parent / "data" / "mitre_cache" / "enterprise-attack.json"

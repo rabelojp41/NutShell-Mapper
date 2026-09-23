@@ -295,7 +295,7 @@ def exportar_stix(
         is_family=False,
         description=(
             f"Amostra SHA256 {resultado.sha256}. Indicadores extraídos por "
-            "análise estática com o RabMapper. A presença de um indicador "
+            "análise estática com o Nut-Shell Mapper. A presença de um indicador "
             "descreve o que foi encontrado no arquivo, não comportamento "
             "observado em execução."
         ),
@@ -472,7 +472,7 @@ def exportar_misp(
 
     evento = {
         "Event": {
-            "info": f"RabMapper — análise estática de {nome}",
+            "info": f"Nut-Shell Mapper — análise estática de {nome}",
             "date": (resultado.iniciado_em or _agora())[:10],
             # 2 = "Possibly false" na escala do MISP. Analise estatica
             # automatizada nao justifica nivel maior sem revisao humana.
@@ -481,7 +481,7 @@ def exportar_misp(
             "published": False,
             "Attribute": atributos,
             "Tag": [
-                {"name": 'rabmapper:origem="analise-estatica"'},
+                {"name": 'nutshell:origem="analise-estatica"'},
                 {"name": 'estimative-language:confidence-in-analytic-judgment="moderate"'},
             ],
         }
