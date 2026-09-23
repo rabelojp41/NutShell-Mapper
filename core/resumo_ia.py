@@ -500,9 +500,16 @@ class ClienteOllama:
             resposta = requests.get(f"{self.url}/api/tags", timeout=10)
             resposta.raise_for_status()
         except Exception as erro:
+            # Nao respondeu pode ser "nao instalado" ou "fechado", e o
+            # remedio e diferente. O executavel no disco separa os dois.
+            if not _executavel_ollama():
+                return False, (
+                    "O Ollama nao esta instalado. Baixe em ollama.com/download "
+                    f"e depois rode: ollama pull {self.modelo}"
+                )
             return False, (
-                f"Ollama nao respondeu em {self.url} ({type(erro).__name__}). "
-                "Verifique se o aplicativo esta aberto."
+                f"O Ollama esta instalado, mas nao respondeu em {self.url} "
+                f"({type(erro).__name__}). Abra o aplicativo Ollama."
             )
 
         modelos = [m.get("name", "") for m in resposta.json().get("models", [])]
@@ -613,6 +620,171 @@ class ClienteOllama:
             raise ErroResumoIA("o modelo devolveu resposta vazia")
 
         return texto.strip()
+
+
+# ============================================================
+# Diagnostico do ambiente
+# ============================================================
+
+
+@dataclass
+class DiagnosticoOllama:
+    """
+    Em que pe esta o Ollama nesta maquina.
+
+    "Nao respondeu" junta tres situacoes com remedios diferentes - nao
+    instalado, instalado mas fechado, aberto mas sem o modelo - e a
+    mensagem generica deixava o analista adivinhar qual era a dele.
+    """
+
+    # "nao_instalado", "parado", "sem_modelo" ou "pronto".
+    estado: str
+    instalado: bool
+    rodando: bool
+    versao: str = ""
+    executavel: str = ""
+    modelos: list[str] = field(default_factory=list)
+    modelo_pedido: str = MODELO_PADRAO
+    modelo_presente: bool = False
+    # O que fazer, numa frase. Vazio quando esta pronto.
+    orientacao: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def _executavel_ollama() -> str:
+    """
+    Onde o Ollama esta instalado, ou "" se nao estiver.
+
+    O PATH nao basta: o instalador do Windows poe o executavel em
+    %LOCALAPPDATA%, e um terminal aberto antes da instalacao nao enxerga
+    a mudanca no PATH.
+    """
+    import os
+    import shutil
+    from pathlib import Path
+
+    encontrado = shutil.which("ollama")
+    if encontrado:
+        return encontrado
+
+    candidatos = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
+        Path("/Applications/Ollama.app/Contents/Resources/ollama"),
+        Path("/usr/local/bin/ollama"),
+        Path("/usr/bin/ollama"),
+    ]
+    for candidato in candidatos:
+        if str(candidato) not in ("", ".") and candidato.is_file():
+            return str(candidato)
+    return ""
+
+
+def _versao_pelo_executavel(executavel: str) -> str:
+    """
+    Versao do cliente, para quando o servidor esta fechado.
+
+    `ollama --version` sem servidor imprime um aviso e, depois, a versao
+    do cliente - e ela que interessa aqui.
+    """
+    import subprocess
+
+    try:
+        saida = subprocess.run(
+            [executavel, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+    texto = (saida.stdout or "") + (saida.stderr or "")
+    achado = re.search(r"\d+\.\d+\.\d+", texto)
+    return achado.group() if achado else ""
+
+
+def diagnosticar_ollama(
+    modelo: str = MODELO_PADRAO, url: str = URL_OLLAMA_PADRAO
+) -> DiagnosticoOllama:
+    """
+    Descobre se o Ollama esta instalado, aberto e com o modelo pedido.
+
+    Nunca levanta excecao: o diagnostico existe justamente para os casos
+    em que as coisas nao estao funcionando.
+    """
+    import requests
+
+    url = url.rstrip("/")
+    modelo = modelo or MODELO_PADRAO
+
+    # --- Esta rodando? ---
+    try:
+        resposta = requests.get(f"{url}/api/version", timeout=3)
+        resposta.raise_for_status()
+        versao = str(resposta.json().get("version", ""))
+        rodando = True
+    except Exception:
+        versao = ""
+        rodando = False
+
+    if not rodando:
+        executavel = _executavel_ollama()
+        if not executavel:
+            return DiagnosticoOllama(
+                estado="nao_instalado",
+                instalado=False,
+                rodando=False,
+                modelo_pedido=modelo,
+                orientacao=(
+                    "O Ollama nao esta instalado. Baixe em ollama.com/download "
+                    f"e depois rode: ollama pull {modelo}"
+                ),
+            )
+        return DiagnosticoOllama(
+            estado="parado",
+            instalado=True,
+            rodando=False,
+            versao=_versao_pelo_executavel(executavel),
+            executavel=executavel,
+            modelo_pedido=modelo,
+            orientacao=(
+                "O Ollama esta instalado, mas fechado. Abra o aplicativo "
+                "Ollama (ou rode: ollama serve) e verifique de novo."
+            ),
+        )
+
+    # --- Rodando: tem o modelo? ---
+    try:
+        tags = requests.get(f"{url}/api/tags", timeout=5).json()
+        modelos = sorted(m.get("name", "") for m in tags.get("models", []) if m.get("name"))
+    except Exception:
+        modelos = []
+
+    base = modelo.split(":")[0]
+    presente = any(m == modelo or m.split(":")[0] == base for m in modelos)
+
+    if not presente:
+        return DiagnosticoOllama(
+            estado="sem_modelo",
+            instalado=True,
+            rodando=True,
+            versao=versao,
+            modelos=modelos,
+            modelo_pedido=modelo,
+            orientacao=f"O Ollama esta aberto, mas sem o modelo. Rode: ollama pull {modelo}",
+        )
+
+    return DiagnosticoOllama(
+        estado="pronto",
+        instalado=True,
+        rodando=True,
+        versao=versao,
+        modelos=modelos,
+        modelo_pedido=modelo,
+        modelo_presente=True,
+    )
 
 
 # ============================================================

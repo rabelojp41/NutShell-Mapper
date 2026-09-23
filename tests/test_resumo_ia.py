@@ -276,9 +276,26 @@ def _fluxo(texto: str, por_pedaco: int = 5):
     return linhas
 
 
-def test_servidor_fora_do_ar_da_instrucao_util(monkeypatch):
+@pytest.mark.parametrize(
+    "executavel, esperado",
+    [
+        # Nao respondeu e nao esta no disco: instalar.
+        ("", "ollama.com/download"),
+        # Nao respondeu mas esta no disco: so abrir.
+        (r"C:\ollama\ollama.exe", "Abra o aplicativo Ollama"),
+    ],
+)
+def test_servidor_fora_do_ar_da_instrucao_util(monkeypatch, executavel, esperado):
+    """
+    "Nao respondeu" era uma mensagem so para dois problemas com remedios
+    diferentes. O executavel e forcado aqui: o teste nao pode depender de o
+    Ollama estar instalado na maquina que roda a suite.
+    """
     import requests
 
+    from core import resumo_ia
+
+    monkeypatch.setattr(resumo_ia, "_executavel_ollama", lambda: executavel)
     monkeypatch.setattr(
         requests,
         "get",
@@ -286,7 +303,63 @@ def test_servidor_fora_do_ar_da_instrucao_util(monkeypatch):
     )
     ok, motivo = ClienteOllama().disponivel()
     assert ok is False
-    assert "aplicativo esta aberto" in motivo
+    assert esperado in motivo
+
+
+def _respostas_ollama(monkeypatch, versao=None, modelos=None):
+    """Dubla /api/version e /api/tags. versao=None: servidor fora do ar."""
+    import requests
+
+    def falso_get(url, *a, **k):
+        if versao is None:
+            raise requests.ConnectionError("recusado")
+        if url.endswith("/api/version"):
+            return _RespostaFalsa({"version": versao})
+        return _RespostaFalsa({"models": [{"name": m} for m in (modelos or [])]})
+
+    monkeypatch.setattr(requests, "get", falso_get)
+
+
+def test_diagnostico_pronto(monkeypatch):
+    from core.resumo_ia import diagnosticar_ollama
+
+    _respostas_ollama(monkeypatch, versao="0.34.2", modelos=["llama3.1:8b", "qwen2.5:7b"])
+    d = diagnosticar_ollama("llama3.1:8b")
+    assert d.estado == "pronto"
+    assert d.versao == "0.34.2"
+    assert d.modelos == ["llama3.1:8b", "qwen2.5:7b"]
+    assert d.orientacao == ""
+
+
+def test_diagnostico_sem_modelo_da_o_comando_exato(monkeypatch):
+    from core.resumo_ia import diagnosticar_ollama
+
+    _respostas_ollama(monkeypatch, versao="0.34.2", modelos=["qwen2.5:7b"])
+    d = diagnosticar_ollama("llama3.1:8b")
+    assert d.estado == "sem_modelo"
+    assert "ollama pull llama3.1:8b" in d.orientacao
+
+
+def test_diagnostico_parado_le_a_versao_do_executavel(monkeypatch):
+    from core import resumo_ia
+
+    _respostas_ollama(monkeypatch, versao=None)
+    monkeypatch.setattr(resumo_ia, "_executavel_ollama", lambda: r"C:\ollama\ollama.exe")
+    monkeypatch.setattr(resumo_ia, "_versao_pelo_executavel", lambda _e: "0.34.2")
+    d = resumo_ia.diagnosticar_ollama()
+    assert d.estado == "parado"
+    assert d.instalado is True
+    assert d.versao == "0.34.2"
+
+
+def test_diagnostico_nao_instalado(monkeypatch):
+    from core import resumo_ia
+
+    _respostas_ollama(monkeypatch, versao=None)
+    monkeypatch.setattr(resumo_ia, "_executavel_ollama", lambda: "")
+    d = resumo_ia.diagnosticar_ollama()
+    assert d.estado == "nao_instalado"
+    assert "ollama.com/download" in d.orientacao
 
 
 def test_sem_modelo_instalado_da_o_comando(monkeypatch):
