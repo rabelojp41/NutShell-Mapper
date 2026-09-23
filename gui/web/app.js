@@ -217,7 +217,8 @@ const estado = {
     tamanho_minimo_de_string: 4,
     cve: "",
     vetor_cvss: "",
-    modelo_ia: "llama3.1:8b",
+    // Vem do Python (estado().modelo_padrao) assim que a ponte conecta.
+    modelo_ia: "",
   },
   ollama: null,          // diagnostico
   verificandoOllama: false,
@@ -1412,7 +1413,7 @@ function revisarYara() {
   const r = estado.resultado;
   estado.revisaoYara = { sha: r.sha256, carregando: true, mensagem: "", dados: null, erro: "" };
   renderizar();
-  ponte.revisarYara(estado.opcoes.modelo_ia || "llama3.1:8b");
+  ponte.revisarYara(estado.opcoes.modelo_ia || estado.ambiente?.modelo_padrao || "");
 }
 
 tarefas.revisao_yara = (t) => {
@@ -1886,6 +1887,7 @@ function conectar() {
     });
 
     estado.ambiente = await chamar("estado");
+    estado.opcoes.modelo_ia = estado.ambiente.modelo_padrao;
     renderizar();
     verificarOllamaSilencioso();
   });

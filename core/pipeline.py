@@ -114,7 +114,7 @@ class OpcoesAnalise:
     # e opcional, porque depende de um servico externo ao processo estar
     # de pe e custa tempo de geracao.
     resumo_ia: bool = False
-    modelo_ia: str = "llama3.1:8b"
+    modelo_ia: str = resumo_ia_mod.MODELO_PADRAO
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -288,7 +288,7 @@ class _Resposta:
         yield from self._linhas
 
 
-def _simular_ollama(monkeypatch, resposta_modelo: str, modelos=("llama3.1:8b",)):
+def _simular_ollama(monkeypatch, resposta_modelo: str, modelos=(ry.MODELO_PADRAO,)):
     import requests
 
     monkeypatch.setattr(

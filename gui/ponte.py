@@ -45,6 +45,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QFileDialog, QWidget
 
 from core.pipeline import OpcoesAnalise
+from core.resumo_ia import MODELO_PADRAO
 from gui.worker import ExecutorDeAnalise
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,7 @@ class Ponte(QObject):
                 },
                 "formatos_de_artefato": list(FORMATOS_DE_ARTEFATO),
                 "formatos_de_relatorio": list(FORMATOS_DE_RELATORIO),
+                "modelo_padrao": MODELO_PADRAO,
                 "analisando": self._executor.rodando,
             }
         )
@@ -264,7 +266,7 @@ class Ponte(QObject):
         def verificar():
             from core.resumo_ia import diagnosticar_ollama
 
-            return diagnosticar_ollama(modelo or "llama3.1:8b").to_dict()
+            return diagnosticar_ollama(modelo or MODELO_PADRAO).to_dict()
 
         self._em_segundo_plano("ollama", verificar)
 
@@ -443,7 +445,7 @@ class Ponte(QObject):
             revisao = revisar_regra(
                 resultado.regra_yara,
                 resultado,
-                modelo=modelo or "llama3.1:8b",
+                modelo=modelo or MODELO_PADRAO,
                 progresso=andamento,
             )
             dados = revisao.to_dict()
@@ -666,5 +668,5 @@ def _opcoes_da_pagina(pedido: dict) -> OpcoesAnalise:
         cve=str(pedido.get("cve", "")).strip(),
         enriquecer=bool(pedido.get("enriquecer", False)),
         resumo_ia=bool(pedido.get("resumo_ia", False)),
-        modelo_ia=str(pedido.get("modelo_ia", "") or "llama3.1:8b").strip(),
+        modelo_ia=str(pedido.get("modelo_ia", "") or MODELO_PADRAO).strip(),
     )

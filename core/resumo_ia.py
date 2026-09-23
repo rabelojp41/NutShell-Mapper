@@ -59,6 +59,12 @@ logger = logging.getLogger(__name__)
 
 
 URL_OLLAMA_PADRAO = "http://localhost:11434"
+# Unica fonte do nome do modelo padrao: CLI, pipeline, ponte e interface
+# leem daqui. Escolhido por medicao, numa RTX 5070 de 8 GB: o llama3.1:8b
+# fez a revisao da regra YARA em ~20 s, com JSON valido, portugues correto
+# e nada inventado. O granite4.2:8b, mais novo, escreveu bem mas gerou a
+# 0,8 token/s nessa placa - cerca de 50x mais lento. Outros modelos
+# instalados continuam escolhiveis na interface.
 MODELO_PADRAO = "llama3.1:8b"
 
 # A primeira chamada carrega varios GB do disco para a memoria e pode

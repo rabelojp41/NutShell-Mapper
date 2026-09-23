@@ -456,6 +456,9 @@ def comando_gui(args: argparse.Namespace) -> int:
 
 
 def construir_parser() -> argparse.ArgumentParser:
+    # Leve: so constantes. O nome do modelo tem uma unica fonte.
+    from core.resumo_ia import MODELO_PADRAO
+
     parser = argparse.ArgumentParser(
         prog="rabmapper",
         description="RabMapper - analise estatica de artefatos e threat intelligence.",
@@ -530,8 +533,8 @@ def construir_parser() -> argparse.ArgumentParser:
              "localhost: nenhum dado sai da maquina",
     )
     p.add_argument(
-        "--modelo-ia", default="llama3.1:8b",
-        help="modelo do Ollama a usar (padrao: llama3.1:8b)",
+        "--modelo-ia", default=MODELO_PADRAO,
+        help=f"modelo do Ollama a usar (padrao: {MODELO_PADRAO})",
     )
     p.add_argument(
         "--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"],

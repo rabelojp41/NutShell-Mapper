@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.pipeline import OpcoesAnalise
+from core.resumo_ia import MODELO_PADRAO
 from gui.estilo import (
     AVISO,
     BOTAO_PERIGO,
@@ -374,7 +375,7 @@ modelo inventar aparece sinalizado."""
         )
         layout_ia.addWidget(self.resumo_ia)
 
-        self.campo_modelo_ia = QLineEdit("llama3.1:8b")
+        self.campo_modelo_ia = QLineEdit(MODELO_PADRAO)
         self.campo_modelo_ia.setPlaceholderText("modelo do Ollama")
         layout_ia.addWidget(self.campo_modelo_ia)
 
@@ -610,7 +611,7 @@ analista julgar, e alimentariam bloqueio automatico com ruido."""
             cve=self.campo_cve.text().strip(),
             enriquecer=self.enriquecer.isChecked(),
             resumo_ia=self.resumo_ia.isChecked(),
-            modelo_ia=self.campo_modelo_ia.text().strip() or "llama3.1:8b",
+            modelo_ia=self.campo_modelo_ia.text().strip() or MODELO_PADRAO,
         )
 
         self.progresso.setValue(0)
