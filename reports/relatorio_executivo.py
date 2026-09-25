@@ -67,7 +67,7 @@ def _registrar_fontes() -> tuple[str, str, bool]:
 # ============================================================
 
 
-def recomendacoes(r: Any, diamante: Any = None) -> list[tuple[str, str]]:
+def recomendacoes(r: Any, diamante: Any = None, reputacao: list | None = None) -> list[tuple[str, str]]:
     """(acao, em que se apoia). Da mais urgente para a menos."""
     saida: list[tuple[str, str]] = []
     codigos = {s.codigo for s in r.sinais}
@@ -93,6 +93,17 @@ def recomendacoes(r: Any, diamante: Any = None) -> list[tuple[str, str]]:
     if r.origem is not None:
         saida.append((f"Bloquear o servidor de origem {dominios.defang(r.origem.ip)} no gateway e buscar outras mensagens vindas dele.",
                       "primeiro salto externo (Received)"))
+        # Contato de abuso do provedor (Censys): endereco de funcao, feito
+        # para denuncia - vai sem defang, porque e para ser usado.
+        for x in reputacao or []:
+            d = x if isinstance(x, dict) else x.to_dict()
+            det = d.get("detalhes") or {}
+            if d["indicador"] == r.origem.ip and det.get("contato_de_abuso"):
+                provedor = det.get("organizacao") or det.get("sistema_autonomo") or "o provedor"
+                saida.append((f"Notificar {provedor}, que hospeda o servidor de origem, pelo contato de abuso "
+                              f"{', '.join(det['contato_de_abuso'][:2])}, com os cabeçalhos da mensagem.",
+                              f"{d['fonte']} (WHOIS do IP)"))
+                break
     saida.append(("Varrer as caixas de entrada da organização com a regra YARA da campanha e pelo assunto "
                   f"“{r.assunto[:60]}”, e remover as cópias encontradas.", "regra YARA da campanha"))
     if any(l.tipo in ("http", "ip", "encurtador") for l in r.links):
@@ -376,7 +387,7 @@ def salvar_pdf_email(
         el.append(Paragraph(limpo(f"Resumo por IA não gerado ({motivo}); texto montado pela ferramenta a partir dos achados."), s_peq))
 
     el.append(Paragraph("O que fazer agora", s_h))
-    for k, (acao, base) in enumerate(recomendacoes(r, diamante), 1):
+    for k, (acao, base) in enumerate(recomendacoes(r, diamante, reputacao), 1):
         el.append(Paragraph(f"<b>{k}.</b> {limpo(acao)} <font size=7.5 color='{TINTA_3}'>({limpo(base)})</font>", s_corpo))
         el.append(Spacer(1, 3))
 

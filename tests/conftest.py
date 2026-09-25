@@ -264,6 +264,7 @@ def _sem_rede_por_acidente(monkeypatch):
     from enrichment import (
         abusech_client,
         abuseipdb_client,
+        censys_client,
         malwarebazaar_client,
         otx_client,
         urlscan_client,
@@ -271,7 +272,7 @@ def _sem_rede_por_acidente(monkeypatch):
         virustotal_client,
     )
 
-    for modulo in (virustotal_client, shodan_client, malwarebazaar_client, abuseipdb_client, otx_client, urlscan_client):
+    for modulo in (virustotal_client, shodan_client, malwarebazaar_client, abuseipdb_client, otx_client, urlscan_client, censys_client):
         monkeypatch.setattr(modulo, "criar", lambda *_a, **_k: None)
     # Fontes de reputacao: cada uma tem a propria fabrica.
     for modulo, fabricas in ((abusech_client, ("criar_urlhaus", "criar_threatfox")),):

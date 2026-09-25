@@ -367,3 +367,64 @@ def test_urlscan_varredura_ativa(monkeypatch):
     assert "imita: Microsoft" in r.resumo
     assert r.detalhes["dominios_contatados"] == ["x.top", "cdn.x.top"]
     assert r.referencia == "https://urlscan.io/result/u9/"
+
+
+# ============================================================
+# Censys
+# ============================================================
+
+
+def _censys(recurso, encontrado=True):
+    from enrichment.censys_client import CensysClient
+
+    c = CensysClient("token")
+    pedidos = []
+
+    def falso(caminho, **kw):
+        pedidos.append(caminho)
+        return RespostaEnriquecimento(consultado=True, encontrado=encontrado, dados={"result": {"resource": recurso}} if recurso else {})
+
+    c._requisitar = falso
+    return c, pedidos
+
+
+def test_censys_servicos_e_so_o_contato_de_abuso():
+    c, pedidos = _censys({
+        "ip": "89.144.9.87", "location": {"city": "Bad Soden", "country_code": "DE"},
+        "autonomous_system": {"asn": 12345, "name": "GHOSTNET"},
+        "whois": {"organization": {"name": "GHOSTnet GmbH",
+                                   "abuse_contacts": [{"email": "noc@ghostnet.de"}],
+                                   "admin_contacts": [{"name": "Fulano de Tal", "email": "fulano@ghostnet.de"}]}},
+        "services": [{"port": 25, "protocol": "SMTP", "software": [{"product": "postfix"}], "labels": [{"value": "EMAIL_SERVER"}],
+                      "cert": {"fingerprint_sha256": "ab" * 32}}],
+    })
+    r = c.consultar("89.144.9.87")
+    assert pedidos == ["/host/89.144.9.87"]
+    assert r.veredito == "contexto"
+    assert "25/SMTP (postfix)" in r.resumo and "AS12345" in r.resumo
+    assert r.detalhes["contato_de_abuso"] == ["noc@ghostnet.de"]
+    # Nome e e-mail de funcionario do provedor nao saem daqui.
+    assert "Fulano" not in str(r.to_dict()) and "fulano@" not in str(r.to_dict())
+    assert r.detalhes["certificados"] == ["ab" * 32]
+
+
+def test_censys_ameaca_e_malicioso_e_ip_privado():
+    c, _ = _censys({"services": [{"port": 443, "protocol": "HTTP", "threats": [{"name": "Cobalt Strike"}]}]})
+    r = c.consultar("45.13.7.9")
+    assert r.veredito == "malicioso" and "Cobalt Strike" in r.resumo
+    c, pedidos = _censys({})
+    assert c.consultar("192.168.0.1").veredito == "sem_registro" and pedidos == []
+
+
+def test_recomendacao_de_notificar_o_provedor(tmp_path):
+    from core.analise_email import analisar_email
+    from reports.relatorio_executivo import recomendacoes
+
+    eml = tmp_path / "g.eml"
+    eml.write_bytes(b"Received: from x (unknown [89.144.9.87]) by mx.v.com; Thu, 27 Jul 2023 07:40:01 +0000\r\n"
+                    b"From: X <a@golpe.top>\r\nSubject: s\r\n\r\nx")
+    r = analisar_email(eml)
+    rep = [Reputacao("Censys", "89.144.9.87", "ip", "contexto",
+                     detalhes={"organizacao": "GHOSTnet GmbH", "contato_de_abuso": ["noc@ghostnet.de"]})]
+    acoes = [a for a, _ in recomendacoes(r, reputacao=rep)]
+    assert any("GHOSTnet GmbH" in a and "noc@ghostnet.de" in a for a in acoes)

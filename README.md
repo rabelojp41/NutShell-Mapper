@@ -71,6 +71,7 @@ e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
 | `enrichment/abuseipdb_client.py` | reputacao de IP por relatos da comunidade, com provedor, pais e tipo de uso |
 | `enrichment/otx_client.py` | pulses do OTX AlienVault que citam o indicador |
 | `enrichment/urlscan_client.py` | busca de varreduras no URLScan.io e varredura ativa opcional |
+| `enrichment/censys_client.py` | servicos expostos, sistema autonomo, DNS reverso e contato de abuso de um IP |
 | `enrichment/consulta_reputacao.py` | pergunta a cada fonte de reputacao configurada o que ela sabe consultar, em paralelo |
 | `enrichment/consulta_dominio.py` | DNS, RDAP, certificados (Certificate Transparency) e subdominios, tudo passivo |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
@@ -387,6 +388,12 @@ ATT&CK e a validacao que evita falso positivo em dominio conhecido) e
 URLScan.io (varreduras que outras pessoas ja fizeram: a pagina que respondeu,
 provedor, redirecionamento e os outros sites que carregam recursos do
 dominio - no ClickFix, os sites comprometidos que injetam o script).
+
+O **Censys** completa o retrato do IP: servicos expostos (porta, protocolo,
+software, certificado), sistema autonomo, localizacao, DNS reverso e o
+contato de abuso do provedor, que vira recomendacao no PDF ("notificar o
+provedor do servidor de origem"). Contato administrativo do WHOIS (nome e
+e-mail de funcionario do provedor) fica de fora.
 
 **Varredura ativa, opcional** (`--varrer-urlscan`, ou o botao em cada link
 na interface, com confirmacao): o URLScan visita o link agora, pela
