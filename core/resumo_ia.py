@@ -55,17 +55,19 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
+from core.modelo_hf import QWEN, comando_de_instalacao
+
 logger = logging.getLogger(__name__)
 
 
 URL_OLLAMA_PADRAO = "http://localhost:11434"
 # Unica fonte do nome do modelo padrao: CLI, pipeline, ponte e interface
-# leem daqui. Escolhido por medicao, numa RTX 5070 de 8 GB: o llama3.1:8b
-# fez a revisao da regra YARA em ~20 s, com JSON valido, portugues correto
-# e nada inventado. O granite4.2:8b, mais novo, escreveu bem mas gerou a
-# 0,8 token/s nessa placa - cerca de 50x mais lento. Outros modelos
-# instalados continuam escolhiveis na interface.
-MODELO_PADRAO = "llama3.1:8b"
+# leem daqui. E o Qwen3.5-9B do Hugging Face (ver core/modelo_hf.py, com o
+# motivo medido da escolha); `python main.py instalar-ia` baixa e registra.
+# Antes dele, o llama3.1:8b; o granite4.2:8b ficou de fora por gerar a
+# 0,8 token/s numa RTX 5070 de 8 GB. Qualquer modelo instalado no Ollama
+# continua escolhivel na interface.
+MODELO_PADRAO = QWEN.nome_ollama
 
 # A primeira chamada carrega varios GB do disco para a memoria e pode
 # passar de dois minutos; as seguintes, com o modelo quente, levam
@@ -511,7 +513,7 @@ class ClienteOllama:
             if not _executavel_ollama():
                 return False, (
                     "O Ollama não está instalado. Baixe em ollama.com/download "
-                    f"e depois rode: ollama pull {self.modelo}"
+                    f"e depois rode: {comando_de_instalacao(self.modelo)}"
                 )
             return False, (
                 f"O Ollama está instalado, mas não respondeu em {self.url} "
@@ -522,7 +524,7 @@ class ClienteOllama:
         if not modelos:
             return False, (
                 "Ollama está rodando mas não tem nenhum modelo. "
-                f"Rode: ollama pull {self.modelo}"
+                f"Rode: {comando_de_instalacao(self.modelo)}"
             )
 
         # O nome pode vir com ou sem a tag (":latest" implicito).
@@ -531,7 +533,7 @@ class ClienteOllama:
             return False, (
                 f"modelo '{self.modelo}' não encontrado. "
                 f"Disponíveis: {', '.join(modelos)}. "
-                f"Para baixar: ollama pull {self.modelo}"
+                f"Para instalar: {comando_de_instalacao(self.modelo)}"
             )
 
         return True, ""
@@ -576,6 +578,11 @@ class ClienteOllama:
             "prompt": prompt,
             "stream": True,
             "keep_alive": MANTER_CARREGADO,
+            # Modelos com raciocinio (Qwen3.5, por exemplo) "pensam" antes de
+            # responder, gastando o limite de tokens num texto que ninguem
+            # le e deixando o JSON pela metade. Para quem nao raciocina, o
+            # campo e ignorado.
+            "think": False,
             "options": {
                 # Temperatura zero: o resumo precisa ser o mais
                 # literal possivel em relacao aos achados. Nao ha
@@ -668,6 +675,8 @@ class DiagnosticoOllama:
     modelo_presente: bool = False
     # O que fazer, numa frase. Vazio quando esta pronto.
     orientacao: str = ""
+    # O comando que instala o modelo pedido.
+    comando_instalacao: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -757,9 +766,10 @@ def diagnosticar_ollama(
                 instalado=False,
                 rodando=False,
                 modelo_pedido=modelo,
+            comando_instalacao=comando_de_instalacao(modelo),
                 orientacao=(
                     "O Ollama não está instalado. Baixe em ollama.com/download "
-                    f"e depois rode: ollama pull {modelo}"
+                    f"e depois rode: {comando_de_instalacao(modelo)}"
                 ),
             )
         return DiagnosticoOllama(
@@ -769,6 +779,7 @@ def diagnosticar_ollama(
             versao=_versao_pelo_executavel(executavel),
             executavel=executavel,
             modelo_pedido=modelo,
+            comando_instalacao=comando_de_instalacao(modelo),
             orientacao=(
                 "O Ollama está instalado, mas fechado. Abra o aplicativo "
                 "Ollama (ou rode: ollama serve) e verifique de novo."
@@ -793,7 +804,8 @@ def diagnosticar_ollama(
             versao=versao,
             modelos=modelos,
             modelo_pedido=modelo,
-            orientacao=f"O Ollama está aberto, mas sem o modelo. Rode: ollama pull {modelo}",
+            comando_instalacao=comando_de_instalacao(modelo),
+            orientacao=f"O Ollama está aberto, mas sem o modelo. Rode: {comando_de_instalacao(modelo)}",
         )
 
     return DiagnosticoOllama(

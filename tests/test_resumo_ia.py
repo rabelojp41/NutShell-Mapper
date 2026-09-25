@@ -370,7 +370,10 @@ def test_sem_modelo_instalado_da_o_comando(monkeypatch):
     )
     ok, motivo = ClienteOllama().disponivel()
     assert ok is False
-    assert "ollama pull" in motivo
+    # O padrao vem do Hugging Face: instala pelo nosso comando, nao pelo pull.
+    assert "python main.py instalar-ia" in motivo
+    ok, motivo = ClienteOllama(modelo="llama3.1:8b").disponivel()
+    assert "ollama pull llama3.1:8b" in motivo
 
 
 def test_modelo_diferente_do_pedido_e_reportado(monkeypatch):

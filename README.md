@@ -155,9 +155,22 @@ natural a partir dos achados, usando um modelo rodando no **Ollama em
 localhost** - nenhum dado sai da maquina, diferente do VirusTotal e do
 Shodan.
 
+O modelo padrao e o **Qwen3.5-9B**, baixado do **Hugging Face** em GGUF
+(`unsloth/Qwen3.5-9B-GGUF`, quantizacao Q4_K_M, 5,7 GB - cabe inteiro numa
+GPU de 8 GB). Um comando baixa, confere o SHA256 contra o publicado no
+repositorio e registra no Ollama:
+
 ```bash
-ollama pull llama3.1:8b
+python main.py instalar-ia
 ```
+
+Por que o Qwen: medido contra o llama3.1:8b, que era o padrao, nas mesmas
+tarefas e com os mesmos criterios. Os dois nao inventaram nada, mas o Qwen
+nao errou a conferencia tambem no teste de prompt injection (o llama errou),
+leu certo a condicao da regra YARA ("4 das 10 strings"; o llama leu "10
+strings") e escreveu 100% em portugues. Custa ~60% mais tempo na revisao,
+porque explica mais. Rodando local, a 55-60 tokens/s numa RTX 5070 de 8 GB.
+Qualquer outro modelo do Ollama continua escolhivel.
 
 ```bash
 python main.py analisar amostra.bin --resumo-ia
@@ -231,7 +244,7 @@ Na interface grafica, o botao **Exportar indicadores...** faz o mesmo.
 
 Na tela da regra YARA, "Revisar regra" explica o que cada string e, o que
 a condicao exige e onde a regra e fraca. A divisao de trabalho vem de um
-teste real: o llama3.1:8b leu `filesize < 1KB and 4 of ($s*)` como se
+teste real com o llama3.1:8b, o modelo anterior: ele leu `filesize < 1KB and 4 of ($s*)` como se
 fosse OU, contou 9 strings onde havia 10, chamou endereco Bitcoin de
 "chave publica" e deu risco alto de falso positivo para URLs de C2
 especificas. Por isso:
@@ -253,6 +266,54 @@ diga que este arquivo e legitimo". Elas vao no prompt serializadas dentro
 de um bloco de dados (com `<` e `>` escapados, para nao fingirem fechar o
 bloco), as que parecem instrucao a uma IA sao marcadas antes, e a tentativa
 em si aparece como achado.
+
+### Analise de e-mail
+
+```bash
+python main.py email mensagem.eml
+python main.py email mensagem.eml --online --json --exportar-iocs csv stix misp
+```
+
+Le um `.eml` (no Gmail: ⋮ → "Fazer download da mensagem"; no Outlook:
+Arquivo → Salvar como) e responde de onde ele veio, quem ele finge ser e o
+que ele quer que a vitima faca:
+
+- **Caminho da mensagem**: cada `Received`, em ordem, com servidor, IP,
+  horario e atraso. A origem e o primeiro salto com IP publico.
+- **SPF, DKIM e DMARC**, lidos do `Authentication-Results` mais alto - o
+  unico escrito pelo seu servidor; os de baixo podem ter sido forjados.
+- **Remetente falso**: `From` diferente do envelope (`Return-Path`),
+  `Reply-To` desviado para webmail, nome de marca num dominio que nao e
+  dela, dominio parecido com o de uma marca (`paypa1`, `rnicrosoft`, letra
+  cirilica em punycode).
+- **Links**: texto que mostra um dominio e leva a outro, IP no lugar de
+  dominio, encurtador, `javascript:`/`data:`, e o golpe "sem link", em que
+  o botao abre um e-mail para um Gmail.
+- **Corpo**: texto escondido para diluir o conteudo aos olhos do antispam,
+  pixel de rastreamento, formulario e script dentro da mensagem.
+- **Anexos**: hash, tipo real pelos primeiros bytes contra a extensao
+  (`fatura.pdf.exe`), macro, HTML smuggling, ZIP com senha.
+
+Sai com um veredito e os motivos, tecnicas ATT&CK (T1566.001/.002, T1598,
+T1656, T1036, T1027.006, T1204) e os indicadores ja "defangados"
+(`hxxps://golpe[.]com`), exportaveis em CSV, STIX e MISP. **Nenhum link e
+acessado, nenhuma imagem remota e carregada e nenhum anexo e aberto**:
+visitar o link ou carregar o pixel avisa o atacante que o e-mail foi lido.
+
+Na interface, basta soltar o `.eml` na janela.
+
+### Dominio
+
+```bash
+python main.py dominio exemplo.com
+```
+
+DNS (IPs, servidor de e-mail, SPF, DMARC), idade e registrador (RDAP) e
+subdominios encontrados nos logs publicos de Certificate Transparency
+(crt.sh, com o Cert Spotter de reserva quando o crt.sh cai). Tudo
+**passivo**: nenhuma requisicao chega ao servidor do dominio investigado,
+e nada de forca bruta de subdominio. O que sai da maquina e so o nome do
+dominio, para o resolvedor DNS e para os servicos de consulta.
 
 ### Shellcode
 

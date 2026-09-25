@@ -249,6 +249,7 @@ def janela(app):
 VISTAS = [
     "visao", "indicadores", "tecnicas", "killchain", "atribuicao", "desofuscacao",
     "strings", "pe", "yara", "enriquecimento", "ia", "avisos", "bazaar", "config", "nova",
+    "email", "dominio",
 ]
 
 # Cada um tenta executar codigo de um jeito diferente. Se qualquer um
@@ -481,3 +482,92 @@ def test_nome_de_musica_nao_vira_codigo(janela):
     assert _js(janela, "document.querySelector('.td-titulo').textContent.includes('onerror=')") is True
     maior = _js(janela, "Math.max(0, ...[...document.querySelectorAll('#toca-discos svg')].map(s => s.getBoundingClientRect().width))")
     assert maior <= 32
+
+
+def _email_envenenado(tmp_path, carga: str) -> dict:
+    """Um e-mail real, analisado, com a carga em todo campo que a tela mostra."""
+    from core.analise_email import analisar_email
+
+    eml = tmp_path / "golpe.eml"
+    eml.write_bytes(
+        (
+            "Received: from x (unknown [45.13.7.9]) by mx.destino.com; Thu, 27 Jul 2023 07:40:01 +0000\r\n"
+            "From: Microsoft <a@golpe.top>\r\nReply-To: b@gmail.com\r\nSubject: s\r\n"
+            "Content-Type: text/html\r\n\r\n"
+            '<a href="https://golpe.top/l">x</a><div style="display:none">oculto</div>'
+        ).encode()
+    )
+    d = analisar_email(eml).to_dict()
+    d["nome"] = carga
+    d["assunto"] = carga
+    d["veredito"] = carga
+    d["texto_oculto"] = carga
+    d["avisos"] = [carga]
+    d["cabecalhos"] = [[carga, carga]]
+    for i in d["identidades"]:
+        i.update(nome=carga, endereco=carga, campo=carga)
+    for s in d["sinais"]:
+        s.update(titulo=carga, detalhe=carga)
+    for l in d["links"]:
+        l.update(destino=carga, texto=carga, observacoes=[carga])
+    for i in d["iocs"]:
+        i.update(valor=carga, defang=carga, origem=carga)
+    for s in d["saltos"]:
+        s.update(de=carga, por=carga, ip=carga, de_reverso=carga)
+    d["origem"].update(de=carga, ip=carga)
+    d["anexos"] = [{"nome": carga, "tipo_declarado": carga, "tipo_real": carga, "tamanho": 1,
+                    "md5": carga, "sha256": carga, "observacoes": [carga]}]
+    d["dominios"] = [_dominio_envenenado(carga)]
+    return d
+
+
+def _dominio_envenenado(carga: str) -> dict:
+    return {
+        "dominio": carga, "registravel": carga, "dns": {"A": [carga], "MX": [carga]}, "spf": carga,
+        "dmarc": carga, "criado_em": carga, "idade_dias": 3, "registrador": carga,
+        "subdominios": [carga] * 20, "subdominios_truncados": False, "imitacao": carga,
+        "observacoes": [carga], "erros": [carga],
+    }
+
+
+def test_email_e_dominio_nao_viram_codigo(janela, tmp_path):
+    """
+    A tela de e-mail mostra o que o atacante escreveu: assunto, nome do
+    remetente, texto e destino de link, cabecalho inteiro. A de dominio
+    mostra registro DNS e nome de certificado, que o dono do dominio escolhe.
+    """
+    carga = " ".join(CARGAS)
+    dados = _email_envenenado(tmp_path, carga)
+    _js(janela, f"estado.email.arquivo = {{nome: 'x.eml'}}; tarefas.email({{ok: true, dados: {json.dumps(dados)}}}); ir('email')")
+    _js(janela, "document.querySelectorAll('details').forEach(d => d.open = true)")
+    _esperar(200)
+    _js(janela, f"tarefas.dominio({{ok: true, dados: {json.dumps(_dominio_envenenado(carga))}}}); ir('dominio')")
+    _esperar(200)
+
+    for vista in ("email", "dominio"):
+        _js(janela, f"ir('{vista}')")
+        _esperar(150)
+        assert _js(janela, "typeof window.__invadido") == "undefined", f"codigo executou em {vista}"
+        perigosos = _js(
+            janela,
+            "document.querySelectorAll('#conteudo img, #conteudo script, #conteudo iframe, "
+            "#conteudo a[href], #conteudo svg[onload], #conteudo [onerror]').length",
+        )
+        assert perigosos == 0, f"elemento perigoso em {vista}"
+        assert _js(janela, "document.getElementById('conteudo').textContent.includes('onerror=')") is True
+
+    # Nenhum link do e-mail vira clicavel: o destino aparece como texto.
+    _js(janela, "ir('email')")
+    _esperar(150)
+    assert _js(janela, "document.querySelectorAll('#conteudo a').length") == 0
+
+
+def test_soltar_eml_leva_para_a_tela_de_email(janela, tmp_path):
+    eml = tmp_path / "golpe.eml"
+    eml.write_bytes(b"From: a@b.com\r\nSubject: s\r\n\r\nx")
+    janela.ponte.definir_arquivo(eml)
+    _esperar(200)
+    assert _js(janela, "estado.vista") == "email"
+    assert _js(janela, "estado.email.arquivo.nome") == "golpe.eml"
+    # O artefato de analise estatica nao foi trocado por um e-mail.
+    assert janela.ponte._arquivo != eml

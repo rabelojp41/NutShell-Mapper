@@ -96,6 +96,7 @@ const ICONES = {
   proxima: ["M7 6v12l9-6z", "M17 6v12"],
   lista: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
   volume: ["M4 10v4h3l5 4V6L7 10z", "M16 9.5a3.5 3.5 0 0 1 0 5"],
+  carta: ["M4 6h16v12H4z", "M4 7l8 6 8-6"],
 };
 
 function icone(nome) {
@@ -232,6 +233,8 @@ const estado = {
   resultado: null,
   filtro: { iocs: "todos", buscaIocs: "", tecnicas: "todos", strings: "todos", buscaStrings: "", limiteStrings: 300 },
   bazaar: { hash: "", carregando: false, consulta: null, erro: "", baixando: false, baixada: null },
+  email: { arquivo: null, online: false, carregando: false, dados: null, erro: "", mensagem: "" },
+  dominio: { valor: "", subdominios: true, carregando: false, dados: null, erro: "", filtro: "" },
   attackAtualizando: false,
   menuAberto: null,
 };
@@ -388,6 +391,8 @@ function renderizarNav() {
       "div",
       { class: "nav-grupo" },
       h("div", { class: "nav-titulo" }, "Ferramentas"),
+      itemNav("email", "Análise de e-mail", "carta", estado.email.dados ? estado.email.dados.pontuacao : null, estado.email.dados?.pontuacao >= 60 ? "alerta" : ""),
+      itemNav("dominio", "Domínio", "busca"),
       itemNav("bazaar", "MalwareBazaar", "caixa"),
       itemNav("config", "Configuração", "engrenagem"),
     ),
@@ -447,7 +452,9 @@ function renderizarTopo() {
     return;
   }
 
-  topo.append(h("div", { class: "topo-titulo" }, v === "bazaar" ? "MalwareBazaar" : "Configuração"));
+  const ferramentas = { bazaar: "MalwareBazaar", email: "Análise de e-mail", dominio: "Domínio" };
+  topo.append(h("div", { class: "topo-titulo" }, ferramentas[v] || "Configuração"));
+  if (v === "email" && estado.email.arquivo) topo.append(h("span", { class: "topo-sub" }, "/  " + estado.email.arquivo.nome));
 }
 
 function botaoMenu(id, rotulo, nomeIcone, itens, primario = false) {
@@ -711,9 +718,9 @@ VISTAS.nova = () => {
 };
 
 function orientacaoOllama(d) {
-  if (d.estado === "nao_instalado") return "Instale o Ollama e depois rode no terminal: ollama pull " + d.modelo_pedido + ".";
+  if (d.estado === "nao_instalado") return "Instale o Ollama e depois rode no terminal: " + (d.comando_instalacao || "ollama pull " + d.modelo_pedido) + ".";
   if (d.estado === "parado") return "Abra o aplicativo Ollama e clique em Verificar de novo.";
-  if (d.estado === "sem_modelo") return "Rode no terminal: ollama pull " + d.modelo_pedido + ".";
+  if (d.estado === "sem_modelo") return "Rode no terminal: " + (d.comando_instalacao || "ollama pull " + d.modelo_pedido) + ".";
   return "";
 }
 
@@ -1856,6 +1863,324 @@ async function salvarYara() {
 }
 
 // ============================================================
+// E-mail
+// ============================================================
+//
+// Tudo que aparece aqui veio do e-mail do atacante: assunto, nomes,
+// enderecos, links. Nenhum link vira <a>: o destino e mostrado ja
+// "defangado" (hxxps://golpe[.]com) e so pode ser copiado.
+
+const GRAVIDADE = { alta: "Alta", media: "Média", baixa: "Baixa" };
+const ORDEM_GRAVIDADE = { alta: 0, media: 1, baixa: 2 };
+
+function defang(valor) {
+  return String(valor || "").replace(/^http/i, "hxxp").replaceAll(".", "[.]").replaceAll("@", "[@]");
+}
+
+function classeDoResultado(valor) {
+  if (!valor) return "";
+  if (valor === "pass") return "ok";
+  if (["fail", "softfail"].includes(valor)) return "alta";
+  return "media";
+}
+
+function classeDoVeredito(pontos) {
+  if (pontos >= 60) return "alta";
+  if (pontos >= 30) return "media";
+  return "baixa";
+}
+
+function linkTecnica(id) {
+  return linkExterno(`https://attack.mitre.org/techniques/${id.replace(".", "/")}/`, id);
+}
+
+VISTAS.email = () => {
+  const e = estado.email;
+  const d = e.dados;
+
+  const escolher = h(
+    "div",
+    { class: "painel" },
+    h(
+      "div",
+      { class: "painel-corpo linha" },
+      icone("carta"),
+      h("div", { style: "min-width:0;flex:1" },
+        h("div", { class: "email-arquivo" }, e.arquivo ? e.arquivo.nome : "Nenhum e-mail selecionado"),
+        h("div", { class: "t3", style: "font-size:12px" }, e.arquivo ? "Pronto para analisar" : "Arraste um arquivo .eml para a janela ou escolha abaixo.")),
+      h("button", { class: "btn", onclick: () => ponte.escolherEmail() }, icone("pasta"), "Escolher .eml"),
+      h("button", { class: "btn btn-primario", disabled: !e.arquivo || e.carregando, onclick: analisarEmail },
+        icone(e.carregando ? "recarregar" : "play"), e.carregando ? "Analisando…" : "Analisar"),
+    ),
+    h(
+      "div",
+      { class: "painel-rodape linha" },
+      interruptor(e.online, (v) => { e.online = v; }, e.carregando, "Consultar domínios na internet"),
+      h("div", {},
+        h("div", { style: "font-weight:600" }, "Consultar domínios na internet"),
+        h("div", { class: "t3", style: "font-size:12px" }, "DNS, idade e registrador dos domínios do e-mail. Só o nome do domínio sai daqui; nenhum link é acessado.")),
+    ),
+  );
+
+  let corpo = null;
+  if (e.carregando) corpo = h("div", { class: "mt-16" }, nota("info", e.mensagem || "Lendo cabeçalhos, corpo e anexos…"));
+  else if (e.erro) corpo = h("div", { class: "mt-16" }, nota("perigo", h("strong", {}, "Não foi possível analisar. "), e.erro));
+  else if (d) corpo = resultadoDoEmail(d);
+
+  return h(
+    "div",
+    { class: "pagina" },
+    cabecalho("Análise de e-mail", "Cabeçalhos, caminho entre servidores, SPF/DKIM/DMARC, remetente falso, links e anexos. Nada é aberto: nenhum link é visitado, nenhuma imagem remota é carregada e nenhum anexo é executado."),
+    escolher,
+    corpo,
+  );
+};
+
+function resultadoDoEmail(d) {
+  const de = d.identidades.find((i) => i.campo === "From" && i.endereco.includes("@")) || d.identidades.find((i) => i.campo === "From");
+  const outros = d.identidades.filter((i) => i !== de && i.campo !== "Message-ID");
+  const sinais = [...d.sinais].sort((a, b) => ORDEM_GRAVIDADE[a.gravidade] - ORDEM_GRAVIDADE[b.gravidade]);
+  const classe = classeDoVeredito(d.pontuacao);
+  const aut = d.autenticacao;
+
+  const veredito = h(
+    "div",
+    { class: `painel email-veredito ${classe}` },
+    h("div", { class: "painel-corpo" },
+      h("div", { class: "email-veredito-linha" },
+        h("div", { style: "min-width:0;flex:1" },
+          h("div", { class: "email-veredito-titulo" }, d.veredito),
+          h("div", { class: "email-assunto" }, d.assunto || "(sem assunto)"),
+          de && h("div", { class: "email-de" }, de.nome ? `${de.nome} ` : "", h("span", { class: "mono" }, `<${de.endereco}>`)),
+        ),
+        h("div", { class: "email-pontos" }, h("span", { class: "num" }, d.pontuacao), h("span", { class: "t3" }, "/100")),
+      ),
+      medida(d.pontuacao / 100, classe, " "),
+      h("div", { class: "email-autenticacao" },
+        ["spf", "dkim", "dmarc"].map((m) => h("span", { class: `etiqueta ${classeDoResultado(aut[m])}` }, `${m.toUpperCase()} ${aut[m] || "?"}`)),
+        d.tecnicas.map((t) => h("span", { class: "etiqueta acento mono", title: t.nome }, t.id)),
+      ),
+    ),
+  );
+
+  const painelSinais = h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `Por que (${sinais.length})`)),
+    sinais.length
+      ? h("div", { class: "email-sinais" }, sinais.map((s) =>
+          h("div", { class: "email-sinal" },
+            selo(s.gravidade),
+            h("div", { style: "min-width:0;flex:1" },
+              h("div", { class: "email-sinal-titulo" }, s.titulo),
+              h("div", { class: "t2", style: "font-size:12.5px" }, s.detalhe)),
+            s.tecnica && linkTecnica(s.tecnica))))
+      : h("div", { class: "painel-corpo t2" }, "Nenhum sinal de phishing nos cabeçalhos, no corpo ou nos anexos."),
+  );
+
+  const identidades = h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Quem enviou, de verdade")),
+    h("div", { class: "painel-corpo" }, h("dl", { class: "defs" },
+      [de, ...outros].filter(Boolean).map((i) => [
+        h("dt", {}, i.campo),
+        h("dd", {}, i.nome && h("span", {}, `${i.nome} `), valorCopiavel(i.endereco)),
+      ]),
+      d.origem && [h("dt", {}, "Servidor de origem"), h("dd", {}, valorCopiavel(d.origem.ip), " ", h("span", { class: "t3" }, d.origem.de_reverso || d.origem.de || ""))],
+      aut.dominio_envelope && [h("dt", {}, "Envelope (SMTP)"), h("dd", {}, h("span", { class: "mono" }, aut.dominio_envelope))],
+    )),
+  );
+
+  const caminho = !d.saltos.length ? null : h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Caminho da mensagem"), h("span", { class: "t3", style: "font-size:12px" }, "do remetente até a sua caixa")),
+    h("ol", { class: "email-saltos" }, d.saltos.map((s) => {
+      const origem = d.origem && s.ordem === d.origem.ordem;
+      return h("li", { class: `email-salto${origem ? " origem" : ""}` },
+        h("div", { class: "email-salto-ponto" }),
+        h("div", { style: "min-width:0;flex:1" },
+          h("div", { class: "email-salto-host" }, h("span", { class: "mono" }, s.de || "?"), s.ip && h("span", { class: "etiqueta mono" }, s.ip), origem && h("span", { class: "etiqueta alta" }, "origem")),
+          h("div", { class: "t3", style: "font-size:12px" }, `→ ${s.por || "?"}`, s.protocolo ? ` · ${s.protocolo}` : "", s.quando ? ` · ${fmtData(s.quando)}` : "", s.atraso_segundos ? ` · +${Math.round(s.atraso_segundos)} s` : "")));
+    })),
+  );
+
+  const links = !d.links.length ? null : h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `Links (${d.links.length})`), h("span", { class: "t3", style: "font-size:12px" }, "nenhum foi acessado")),
+    h("div", { class: "tabela-wrap" }, h("table", { class: "tabela" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Tipo"), h("th", {}, "Destino"), h("th", {}, "Texto exibido"))),
+      h("tbody", {}, d.links.map((l) => h("tr", {},
+        h("td", { class: "estreita" }, h("span", { class: `etiqueta ${l.observacoes.length ? "media" : ""}` }, l.tipo)),
+        h("td", { class: "quebra" }, valorCopiavel(defang(l.destino)), l.observacoes.map((o) => h("div", { class: "t3", style: "font-size:12px" }, o))),
+        h("td", { class: "t2" }, l.texto || "—")))))),
+  );
+
+  const anexos = !d.anexos.length ? null : h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `Anexos (${d.anexos.length})`), h("span", { class: "t3", style: "font-size:12px" }, "nenhum foi aberto")),
+    h("div", { class: "email-sinais" }, d.anexos.map((a) =>
+      h("div", { class: "email-sinal" },
+        icone("arquivo"),
+        h("div", { style: "min-width:0;flex:1" },
+          h("div", { class: "email-sinal-titulo" }, a.nome, " ", h("span", { class: "t3" }, `${fmtBytes(a.tamanho)} · ${a.tipo_real}`)),
+          valorCopiavel(a.sha256),
+          a.observacoes.map((o) => h("div", { class: "t2", style: "font-size:12.5px" }, o)))))),
+  );
+
+  const iocs = h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `Indicadores (${d.iocs.length})`),
+      h("button", { class: "btn btn-pequeno", style: "margin-left:auto", disabled: !d.iocs.length, onclick: exportarIndicadoresEmail }, icone("baixar"), "Exportar CSV, STIX e MISP")),
+    h("div", { class: "tabela-wrap" }, h("table", { class: "tabela" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Confiança"), h("th", {}, "Tipo"), h("th", {}, "Valor (sem risco de clique)"), h("th", {}, "Onde"))),
+      h("tbody", {}, d.iocs.map((i) => h("tr", {},
+        h("td", { class: "estreita" }, selo(i.confianca)),
+        h("td", { class: "estreita t2" }, TIPO_IOC[i.tipo] || i.tipo),
+        h("td", { class: "quebra" }, valorCopiavel(i.defang)),
+        h("td", { class: "t3" }, i.origem)))))),
+  );
+
+  const doms = !d.dominios?.length ? null : h("div", { class: "mt-16" }, d.dominios.map((c) => painelDominio(c, true)));
+
+  const oculto = !d.texto_oculto ? null : h(
+    "details",
+    { class: "painel mt-16 dobra" },
+    h("summary", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Texto escondido"), h("span", { class: "t3", style: "font-size:12px" }, `${fmtNum(d.texto_oculto.length)} caracteres que o leitor não vê`)),
+    h("div", { class: "painel-corpo mono email-texto" }, d.texto_oculto.slice(0, 4000)),
+  );
+
+  const cabecalhos = h(
+    "details",
+    { class: "painel mt-16 dobra" },
+    h("summary", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `Todos os cabeçalhos (${d.cabecalhos.length})`)),
+    h("div", { class: "tabela-wrap" }, h("table", { class: "tabela" },
+      h("tbody", {}, d.cabecalhos.map(([k, v]) => h("tr", {}, h("td", { class: "estreita mono t2" }, k), h("td", { class: "quebra mono" }, v)))))),
+  );
+
+  return h("div", { class: "mt-16" },
+    d.avisos?.length ? nota("aviso", d.avisos.join(" ")) : null,
+    veredito, painelSinais, identidades, caminho, links, anexos, iocs, doms, oculto, cabecalhos);
+}
+
+function analisarEmail() {
+  const e = estado.email;
+  if (!e.arquivo) return;
+  Object.assign(e, { carregando: true, erro: "", dados: null, mensagem: "" });
+  renderizar();
+  ponte.analisarEmail(e.online);
+}
+
+tarefas.email = (t) => {
+  const e = estado.email;
+  e.carregando = false;
+  if (t.ok) e.dados = t.dados;
+  else e.erro = t.erro;
+  renderizarNav();
+  if (estado.vista === "email") renderizar();
+};
+
+async function exportarIndicadoresEmail() {
+  const r = await chamar("exportarIndicadoresEmail", "media");
+  if (r?.cancelado) return;
+  if (!r?.ok) return avisar("erro", "Indicadores não exportados", r?.erro || "");
+  avisar("ok", "Indicadores exportados", r.pasta, { rotulo: "Abrir pasta", fazer: () => chamar("abrirArquivo", r.pasta) });
+}
+
+// ============================================================
+// Dominio
+// ============================================================
+
+function painelDominio(c, compacto = false) {
+  const dns = ["A", "AAAA", "MX", "NS"].filter((t) => c.dns?.[t]?.length);
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" },
+      icone("globo"),
+      h("span", { class: "painel-titulo mono" }, c.dominio),
+      c.idade_dias !== null && c.idade_dias !== undefined && h("span", { class: `etiqueta ${c.idade_dias < 180 ? "alta" : ""}` }, `${fmtNum(c.idade_dias)} dias`),
+      c.imitacao && h("span", { class: "etiqueta alta" }, "imita marca")),
+    h("div", { class: "painel-corpo pilha" },
+      c.imitacao && nota("perigo", c.imitacao),
+      c.observacoes?.length ? h("ul", { class: "dominio-obs" }, c.observacoes.map((o) => h("li", {}, o))) : null,
+      h("dl", { class: "defs" },
+        c.criado_em && [h("dt", {}, "Registrado em"), h("dd", {}, fmtData(c.criado_em) || c.criado_em, c.registrador ? ` · ${c.registrador}` : "")],
+        dns.map((t) => [h("dt", {}, t), h("dd", {}, h("div", { class: "etiquetas" }, c.dns[t].slice(0, 8).map((v) => h("span", { class: "etiqueta mono" }, v))))]),
+        h("dt", {}, "SPF"), h("dd", { class: "mono quebra" }, c.spf || "—"),
+        h("dt", {}, "DMARC"), h("dd", { class: "mono quebra" }, c.dmarc || "—"),
+      ),
+      !compacto && c.subdominios?.length ? listaDeSubdominios(c) : null,
+      c.erros?.length ? h("div", { class: "t3", style: "font-size:12px" }, c.erros.join(" · ")) : null,
+    ),
+  );
+}
+
+function listaDeSubdominios(c) {
+  const f = estado.dominio;
+  const lista = h("div", { class: "dominio-subs" });
+  // Filtrar redesenha so a lista: redesenhar a tela tiraria o foco do campo.
+  const preencher = () => {
+    const termo = (f.filtro || "").toLowerCase();
+    limpar(lista);
+    anexar(lista, c.subdominios.filter((n) => !termo || n.includes(termo)).slice(0, 400).map((n) => h("span", { class: "etiqueta mono" }, n)));
+  };
+  preencher();
+  return h("div", {},
+    h("div", { class: "linha", style: "margin-bottom:8px" },
+      h("strong", {}, `Subdomínios (${fmtNum(c.subdominios.length)}${c.subdominios_truncados ? "+" : ""})`),
+      h("span", { class: "t3", style: "font-size:12px" }, "dos logs públicos de certificados"),
+      c.subdominios.length > 12 && h("div", { style: "margin-left:auto" }, busca(f.filtro || "", "Filtrar", (v) => { f.filtro = v; preencher(); }))),
+    lista,
+    h("div", { class: "linha mt-16" }, h("button", { class: "btn btn-pequeno", onclick: () => copiar(c.subdominios.join("\n"), "Subdomínios copiados") }, icone("copiar"), "Copiar todos")));
+}
+
+VISTAS.dominio = () => {
+  const f = estado.dominio;
+  const entrada = h("input", { class: "campo mono", placeholder: "exemplo.com", value: f.valor, spellcheck: "false" });
+  entrada.addEventListener("input", () => { f.valor = entrada.value; });
+  entrada.addEventListener("keydown", (ev) => { if (ev.key === "Enter") consultarDominio(); });
+
+  let corpo = null;
+  if (f.carregando) corpo = h("div", { class: "mt-16" }, nota("info", "Consultando DNS, registro e certificados…"));
+  else if (f.erro) corpo = h("div", { class: "mt-16" }, nota("perigo", f.erro));
+  else if (f.dados) corpo = painelDominio(f.dados);
+
+  return h(
+    "div",
+    { class: "pagina estreita" },
+    cabecalho("Domínio", "DNS (IPs, servidor de e-mail, SPF, DMARC), idade e registrador, e subdomínios encontrados em certificados públicos. Tudo passivo: nenhuma requisição chega ao servidor do domínio."),
+    h("div", { class: "linha" }, entrada,
+      h("button", { class: "btn btn-primario", disabled: f.carregando, onclick: consultarDominio }, f.carregando ? "Consultando…" : "Consultar")),
+    h("div", { class: "linha mt-16" },
+      interruptor(f.subdominios, (v) => { f.subdominios = v; }, f.carregando, "Buscar subdomínios"),
+      h("span", { class: "t2" }, "Buscar subdomínios nos logs de certificados (crt.sh, Cert Spotter)")),
+    corpo,
+  );
+};
+
+function consultarDominio() {
+  const f = estado.dominio;
+  const valor = f.valor.trim().replace(/^https?:\/\//i, "").split("/")[0];
+  if (!valor) return;
+  Object.assign(f, { valor, carregando: true, erro: "", dados: null, filtro: "" });
+  renderizar();
+  ponte.consultarDominio(valor, f.subdominios);
+}
+
+tarefas.dominio = (t) => {
+  const f = estado.dominio;
+  f.carregando = false;
+  if (t.ok) f.dados = t.dados;
+  else f.erro = t.erro;
+  if (estado.vista === "dominio") renderizar();
+};
+
+// ============================================================
 // Toca-discos
 // ============================================================
 //
@@ -2198,6 +2523,10 @@ function conectar() {
     ponte.arrastando.connect((json) => document.body.classList.toggle("arrastando", JSON.parse(json).ativo));
     ponte.andamentoTarefa.connect((json) => {
       const t = JSON.parse(json);
+      if (t.id === "email" && estado.email.carregando) {
+        estado.email.mensagem = t.mensagem;
+        if (estado.vista === "email") renderizar();
+      }
       if (t.id === "revisao_yara" && estado.revisaoYara?.carregando) {
         estado.revisaoYara.mensagem = t.mensagem;
         // So o texto muda: re-renderizar a tela inteira a cada meio segundo
@@ -2207,6 +2536,11 @@ function conectar() {
       }
     });
 
+    ponte.emailSelecionado.connect((json) => {
+      const a = JSON.parse(json);
+      Object.assign(estado.email, { arquivo: a, dados: null, erro: "" });
+      ir("email");
+    });
     ponte.discoMudou.connect((json) => {
       disco.estado = JSON.parse(json);
       atualizarTocaDiscos();

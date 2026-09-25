@@ -451,6 +451,194 @@ def comando_gui(args: argparse.Namespace) -> int:
     return gui_main()
 
 
+def _imprimir_dominio(c) -> None:
+    print(f"  Domínio      : {c.dominio}  (registrável: {c.registravel})")
+    if c.imitacao:
+        print(f"  ! Imitação   : {c.imitacao}")
+    if c.criado_em:
+        idade = f" ({c.idade_dias} dias)" if c.idade_dias is not None else ""
+        print(f"  Registrado em: {c.criado_em[:10]}{idade}  {c.registrador}")
+    for tipo in ("A", "AAAA", "MX", "NS"):
+        if c.dns.get(tipo):
+            print(f"  {tipo:5}        : {', '.join(c.dns[tipo][:6])}")
+    print(f"  SPF          : {c.spf or '(nenhum)'}")
+    print(f"  DMARC        : {c.dmarc or '(nenhum)'}")
+    if c.subdominios:
+        extra = " (lista truncada)" if c.subdominios_truncados else ""
+        print(f"  Subdomínios  : {len(c.subdominios)} nos logs de certificados{extra}")
+        for nome in c.subdominios[:30]:
+            print(f"                 {nome}")
+        if len(c.subdominios) > 30:
+            print(f"                 ... e mais {len(c.subdominios) - 30}")
+    for obs in c.observacoes:
+        print(f"  - {obs}")
+    for erro in c.erros:
+        print(f"  (falhou) {erro}")
+
+
+def comando_email(args: argparse.Namespace) -> int:
+    import json
+
+    from core.analise_email import ErroEmail, analisar_email
+    from urllib.parse import urlsplit
+
+    from core.dominios import defang, e_webmail, registravel
+
+    caminho = Path(args.arquivo)
+    if not caminho.is_file():
+        print(f"erro: arquivo nao encontrado: {caminho}", file=sys.stderr)
+        return 1
+    try:
+        r = analisar_email(caminho)
+    except ErroEmail as erro:
+        print(f"erro: {erro}", file=sys.stderr)
+        return 1
+
+    _titulo(f"E-mail: {caminho.name}")
+    print(f"  Assunto   : {r.assunto}")
+    print(f"  Data      : {r.data}")
+    for ident in r.identidades:
+        if ident.campo != "Message-ID":
+            nome = f'"{ident.nome}" ' if ident.nome else ""
+            print(f"  {ident.campo:10}: {nome}<{ident.endereco}>")
+    print(f"\n  Veredito  : {r.veredito} ({r.pontuacao}/100)")
+
+    _secao("Caminho da mensagem (do remetente até você)")
+    for salto in r.saltos:
+        atraso = f" +{salto.atraso_segundos:.0f}s" if salto.atraso_segundos else ""
+        marca = "  <- origem" if r.origem is salto else ""
+        print(f"  {salto.ordem}. {salto.de or '?'} [{salto.ip or '-'}] -> {salto.por or '?'}{atraso}{marca}")
+    if r.origem is not None:
+        print(f"\n  Servidor de origem: {r.origem.ip} ({r.origem.de_reverso or r.origem.de or 'sem nome'})")
+
+    a = r.autenticacao
+    _secao("Autenticação")
+    print(f"  SPF {a.spf or '?'}   DKIM {a.dkim or '?'}   DMARC {a.dmarc or '?'}"
+          f"   (envelope: {a.dominio_envelope or '-'})")
+
+    _secao(f"Sinais ({len(r.sinais)})")
+    ordem = {"alta": 0, "media": 1, "baixa": 2}
+    for sinal in sorted(r.sinais, key=lambda x: ordem[x.gravidade]):
+        tecnica = f"  [{sinal.tecnica}]" if sinal.tecnica else ""
+        print(f"  [{sinal.gravidade:5}] {sinal.titulo}{tecnica}")
+        print(f"          {sinal.detalhe}")
+
+    if r.links:
+        _secao(f"Links ({len(r.links)}) - nenhum foi acessado")
+        for link in r.links[:20]:
+            print(f"  {link.tipo:10} {defang(link.destino)[:90]}")
+            for obs in link.observacoes:
+                print(f"             - {obs}")
+    if r.anexos:
+        _secao(f"Anexos ({len(r.anexos)}) - nenhum foi aberto")
+        for anexo in r.anexos:
+            print(f"  {anexo.nome}  {anexo.tamanho} bytes  {anexo.tipo_real}")
+            print(f"    sha256 {anexo.sha256}")
+            for obs in anexo.observacoes:
+                print(f"    - {obs}")
+    if r.tecnicas:
+        _secao("MITRE ATT&CK")
+        for t in r.tecnicas:
+            print(f"  {t['id']:10} {t['nome']}")
+    _secao(f"Indicadores ({len(r.iocs)}), já sem risco de clique")
+    for i in r.iocs:
+        print(f"  [{i.confianca.value:5}] {i.tipo.value:8} {defang(i.valor)[:80]}  ({i.origem})")
+
+    consultas = []
+    if args.online:
+        from enrichment.consulta_dominio import consultar_dominio
+
+        alvos = []
+        for d in [x.dominio for x in r.identidades if x.campo != "Message-ID"] + \
+                 [l.dominio for l in r.links if l.tipo in ("http", "encurtador")] +                  [urlsplit(u).hostname or "" for u in r.imagens_remotas]:
+            base = registravel(d) if d else ""
+            if base and not e_webmail(base) and base not in alvos:
+                alvos.append(base)
+        print("\n  Consultando domínios (DNS, RDAP, crt.sh). Só o nome do domínio sai daqui.")
+        for alvo in alvos[:6]:
+            _secao(f"Domínio {alvo}")
+            try:
+                c = consultar_dominio(alvo, certificados=False)
+            except ValueError as erro:
+                print(f"  {erro}")
+                continue
+            consultas.append(c.to_dict())
+            _imprimir_dominio(c)
+
+    saida = Path(args.saida)
+    if args.json or args.exportar_iocs:
+        saida.mkdir(parents=True, exist_ok=True)
+    if args.json:
+        destino = saida / f"{caminho.stem}_{r.sha256[:8]}_email.json"
+        dados = r.to_dict()
+        dados["dominios"] = consultas
+        destino.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n  JSON: {destino}")
+    if args.exportar_iocs:
+        from core.string_extractor import Confianca
+        from reports import ioc_export
+
+        minima = {"alta": Confianca.ALTA, "media": Confianca.MEDIA, "baixa": Confianca.BAIXA}[args.confianca_minima]
+        for formato, s in ioc_export.exportar(r, saida, args.exportar_iocs, confianca_minima=minima).items():
+            print(f"  {formato:6} {s.exportados:3} indicadores  {s.caminho}")
+    print()
+    return 0
+
+
+def comando_dominio(args: argparse.Namespace) -> int:
+    import json
+
+    from enrichment.consulta_dominio import consultar_dominio
+
+    _titulo(f"Domínio: {args.dominio}")
+    print("  Consulta passiva: DNS (Cloudflare), RDAP e logs de certificados (crt.sh, Cert Spotter).")
+    print("  Nenhuma requisição vai ao servidor do domínio.\n")
+    try:
+        c = consultar_dominio(args.dominio, certificados=not args.sem_subdominios)
+    except ValueError as erro:
+        print(f"erro: {erro}", file=sys.stderr)
+        return 1
+    _imprimir_dominio(c)
+    if args.json:
+        destino = Path(args.saida)
+        destino.mkdir(parents=True, exist_ok=True)
+        arquivo = destino / f"dominio_{c.registravel}.json"
+        arquivo.write_text(json.dumps(c.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n  JSON: {arquivo}")
+    print()
+    return 0
+
+
+def comando_instalar_ia(args: argparse.Namespace) -> int:
+    """Baixa o modelo do Hugging Face, confere o SHA256 e registra no Ollama."""
+    from core import modelo_hf
+
+    modelo = modelo_hf.QWEN
+    pasta = Path(args.pasta) if args.pasta else modelo_hf.pasta_padrao()
+    _titulo(f"Instalando {modelo.nome_ollama}")
+    print(f"  Origem : {modelo.pagina}")
+    print(f"  Arquivo: {modelo.arquivo} ({modelo.tamanho / 2**30:.1f} GB)")
+    print(f"  SHA256 : {modelo.sha256}")
+    print(f"  Pasta  : {pasta}\n")
+
+    ultimo = [""]
+
+    def progresso(etapa: str, fracao: float) -> None:
+        rotulo = {"baixando": "Baixando", "conferindo": "Conferindo SHA256", "registrando": "Registrando no Ollama"}[etapa]
+        if etapa != ultimo[0] and ultimo[0]:
+            print()
+        ultimo[0] = etapa
+        print(f"\r  {rotulo:22} {fracao * 100:5.1f}%", end="", flush=True)
+
+    try:
+        modelo_hf.instalar(modelo, pasta, manter_gguf=args.manter_gguf, progresso=progresso)
+    except (modelo_hf.ErroInstalacao, OSError) as erro:
+        print(f"\nerro: {erro}", file=sys.stderr)
+        return 1
+    print(f"\n\n  Pronto. O modelo {modelo.nome_ollama} já é o padrão do resumo e da revisão por IA.\n")
+    return 0
+
+
 def comando_atalho(args: argparse.Namespace) -> int:
     """Cria o atalho com icone na Area de Trabalho e no Menu Iniciar."""
     try:
@@ -622,6 +810,45 @@ def construir_parser() -> argparse.ArgumentParser:
         help="abre a interface antiga, em Qt puro, no lugar da nova",
     )
     p.set_defaults(funcao=comando_gui)
+
+    # --- email ---
+    p = sub.add_parser(
+        "email",
+        help="analisa um e-mail (.eml): cabeçalhos, origem, autenticação, links e anexos",
+        parents=[comum],
+    )
+    p.add_argument("arquivo", help="arquivo .eml")
+    p.add_argument(
+        "--online", action="store_true",
+        help="consulta DNS, idade e registrador dos domínios envolvidos (só o nome do domínio sai daqui)",
+    )
+    p.add_argument("--json", action="store_true", help="salva o resultado completo em JSON")
+    p.add_argument("-o", "--saida", default="output", help="diretorio de saida (padrao: output)")
+    p.add_argument("--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"])
+    p.add_argument("--confianca-minima", choices=["alta", "media", "baixa"], default="media")
+    p.set_defaults(funcao=comando_email)
+
+    # --- dominio ---
+    p = sub.add_parser(
+        "dominio",
+        help="DNS, idade, registrador e subdomínios de um domínio, de forma passiva",
+        parents=[comum],
+    )
+    p.add_argument("dominio", help="ex.: exemplo.com")
+    p.add_argument("--sem-subdominios", action="store_true", help="não consulta os logs de certificados")
+    p.add_argument("--json", action="store_true", help="salva o resultado em JSON")
+    p.add_argument("-o", "--saida", default="output", help="diretorio de saida (padrao: output)")
+    p.set_defaults(funcao=comando_dominio)
+
+    # --- instalar-ia ---
+    p = sub.add_parser(
+        "instalar-ia",
+        help="baixa o modelo de IA padrao (Qwen3.5-9B) do Hugging Face e registra no Ollama",
+        parents=[comum],
+    )
+    p.add_argument("--pasta", help="onde baixar o GGUF (padrao: ao lado de OLLAMA_MODELS)")
+    p.add_argument("--manter-gguf", action="store_true", help="nao apaga o GGUF depois de registrar")
+    p.set_defaults(funcao=comando_instalar_ia)
 
     # --- atalho ---
     p = sub.add_parser(

@@ -186,6 +186,8 @@ class Ponte(QObject):
     # {id, mensagem}: andamento de tarefa longa em segundo plano.
     andamentoTarefa = Signal(str)
     arrastando = Signal(str)
+    # {ok, nome, caminho}: .eml escolhido ou arrastado para a janela.
+    emailSelecionado = Signal(str)
     discoMudou = Signal(str)
 
     def __init__(self, janela: QWidget):
@@ -199,6 +201,9 @@ class Ponte(QObject):
         self._gravados: set[str] = set()
         # Amostras baixadas e ainda nao extraidas, por SHA256.
         self._amostras: dict[str, Any] = {}
+        # E-mail escolhido e o resultado da ultima analise dele.
+        self._email: Path | None = None
+        self._resultado_email = None
 
         self._executor = ExecutorDeAnalise(self)
         self._executor.progresso.connect(self._ao_progredir)
@@ -214,6 +219,11 @@ class Ponte(QObject):
 
     def definir_arquivo(self, caminho: Path) -> None:
         """Chamado pelo dialogo e pelo arrastar-e-soltar da janela."""
+        if caminho.suffix.lower() == ".eml":
+            # Soltar um e-mail na janela leva para a analise de e-mail, e
+            # nao para a analise de artefato, que so veria texto.
+            self.definir_email(caminho)
+            return
         descricao = descrever_arquivo(caminho)
         if descricao.get("ok"):
             self._arquivo = caminho
@@ -638,6 +648,98 @@ class Ponte(QObject):
             self.tarefaConcluida.emit(para_json(resposta))
 
         threading.Thread(target=rodar, name=f"ponte-{identificador}", daemon=True).start()
+
+    # ------------------------------------------------------------
+    # E-mail e dominio
+    # ------------------------------------------------------------
+
+    def definir_email(self, caminho: Path) -> None:
+        self._email = caminho
+        self._resultado_email = None
+        self.emailSelecionado.emit(para_json({"ok": True, "nome": caminho.name, "caminho": str(caminho)}))
+
+    @Slot()
+    def escolherEmail(self) -> None:
+        caminho, _ = QFileDialog.getOpenFileName(
+            self._janela, "Selecionar e-mail", "", "E-mail (*.eml);;Todos os arquivos (*)"
+        )
+        if caminho:
+            self.definir_email(Path(caminho))
+
+    @Slot(bool)
+    def analisarEmail(self, online: bool) -> None:
+        """
+        Analisa o e-mail escolhido. Com `online`, consulta tambem os dominios
+        envolvidos - so o nome de cada dominio sai da maquina.
+        """
+        caminho = self._email
+        if caminho is None:
+            self.tarefaConcluida.emit(para_json({"id": "email", "ok": False, "erro": "nenhum e-mail selecionado"}))
+            return
+
+        def analisar():
+            from core.analise_email import analisar_email
+            from core.dominios import e_webmail, registravel
+
+            resultado = analisar_email(caminho)
+            self._resultado_email = resultado
+            dados = resultado.to_dict()
+            dados["nome"] = caminho.name
+            dados["dominios"] = []
+            if online:
+                from enrichment.consulta_dominio import consultar_dominio
+
+                alvos: list[str] = []
+                candidatos = [i.dominio for i in resultado.identidades if i.campo != "Message-ID"]
+                candidatos += [l.dominio for l in resultado.links if l.tipo in ("http", "encurtador")]
+                for d in candidatos:
+                    base = registravel(d) if d else ""
+                    if base and not e_webmail(base) and base not in alvos:
+                        alvos.append(base)
+                for alvo in alvos[:6]:
+                    self.andamentoTarefa.emit(para_json({"id": "email", "mensagem": f"Consultando {alvo}…"}))
+                    try:
+                        dados["dominios"].append(consultar_dominio(alvo, certificados=False).to_dict())
+                    except ValueError:
+                        continue
+            return dados
+
+        self._em_segundo_plano("email", analisar)
+
+    @Slot(str, result=str)
+    def exportarIndicadoresEmail(self, confianca_minima: str) -> str:
+        if self._resultado_email is None:
+            return _erro("nenhum e-mail analisado")
+
+        from core.string_extractor import Confianca
+        from reports import ioc_export
+
+        try:
+            corte = Confianca(confianca_minima or "media")
+        except ValueError:
+            return _erro(f"confianca desconhecida: {confianca_minima}")
+        destino = QFileDialog.getExistingDirectory(self._janela, "Onde salvar os indicadores", "")
+        if not destino:
+            return para_json({"ok": False, "cancelado": True})
+        saidas = ioc_export.exportar(self._resultado_email, destino, ["csv", "stix", "misp"], confianca_minima=corte)
+        if not saidas:
+            return _erro("nenhum formato pode ser gravado")
+        for saida in saidas.values():
+            self._gravados.add(str(Path(saida.caminho).resolve()))
+        self._gravados.add(str(Path(destino).resolve()))
+        return para_json({"ok": True, "pasta": destino, "formatos": {f: x.to_dict() for f, x in saidas.items()}})
+
+    @Slot(str, bool)
+    def consultarDominio(self, dominio: str, subdominios: bool) -> None:
+        """DNS, idade e subdominios, de forma passiva. Roda em segundo plano."""
+        dominio = (dominio or "").strip()[:253]
+
+        def consultar():
+            from enrichment.consulta_dominio import consultar_dominio
+
+            return consultar_dominio(dominio, certificados=subdominios).to_dict()
+
+        self._em_segundo_plano("dominio", consultar)
 
     # ------------------------------------------------------------
     # Toca-discos
