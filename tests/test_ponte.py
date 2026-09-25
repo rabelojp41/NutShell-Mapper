@@ -518,6 +518,27 @@ def _email_envenenado(tmp_path, carga: str) -> dict:
     d["anexos"] = [{"nome": carga, "tipo_declarado": carga, "tipo_real": carga, "tamanho": 1,
                     "md5": carga, "sha256": carga, "observacoes": [carga]}]
     d["dominios"] = [_dominio_envenenado(carga)]
+    item = {"valor": carga, "descricao": carga, "tipo": "tipo 1"}
+    vertice = {"nome": carga, "resumo": carga, "itens": [item] * 5}
+    d["diamante"] = {
+        "adversario": vertice, "capacidade": vertice, "infraestrutura": vertice, "vitima": vertice,
+        "meta": {carga: carga}, "eixo_social": carga, "eixo_tecnico": carga,
+        "ttps": [{"tatica": carga, "tatica_nome": carga, "tecnica": "T1598", "tecnica_nome": carga,
+                  "procedimento": carga, "evidencias": [carga]}],
+        "pivos": [{"de": carga, "para": carga, "acao": carga}],
+    }
+    d["piramide"] = {
+        "degraus": [{"id": x, "nome": carga, "dor": carga, "explicacao": carga}
+                    for x in ("hash", "ip", "dominio", "artefato", "ferramenta", "ttp")],
+        "itens": [{"valor": carga, "degrau": "ttp", "classe": "IoA", "origem": carga},
+                  {"valor": carga, "degrau": "ip", "classe": "IoC", "origem": carga}],
+        "leitura": carga, "contagem": {"hash": 0, "ip": 1, "dominio": 0, "artefato": 0, "ferramenta": 0, "ttp": 1},
+    }
+    d["grafo"] = {
+        "nos": [{"id": "c", "rotulo": carga, "tipo": "mensagem", "vertice": "centro", "detalhe": carga, "destaque": True},
+                {"id": "x", "rotulo": carga, "tipo": carga, "vertice": carga, "detalhe": carga, "destaque": False}],
+        "arestas": [{"de": "c", "para": "x", "rotulo": carga, "tracejada": False}],
+    }
     return d
 
 
@@ -539,6 +560,13 @@ def test_email_e_dominio_nao_viram_codigo(janela, tmp_path):
     carga = " ".join(CARGAS)
     dados = _email_envenenado(tmp_path, carga)
     _js(janela, f"estado.email.arquivo = {{nome: 'x.eml'}}; tarefas.email({{ok: true, dados: {json.dumps(dados)}}}); ir('email')")
+    ia = {"texto": carga + "\n" + carga, "modelo": carga, "gerado": True, "erro": "", "duracao_segundos": 1,
+          "invencoes": [{"tipo": carga, "valor": carga, "explicacao": carga}], "avisos": [carga],
+          "confiavel": False, "ressalva": carga}
+    yara_ = {"texto": carga, "valida": False, "avisos": [carga], "nome": carga}
+    _js(janela, f"estado.email.ia = {{carregando: false, dados: {json.dumps(ia)}}}; "
+                f"estado.email.yara = {json.dumps(yara_)}; renderizar()")
+    _js(janela, "document.querySelectorAll('.grafo-no').forEach(n => n.dispatchEvent(new MouseEvent('click')))")
     _js(janela, "document.querySelectorAll('details').forEach(d => d.open = true)")
     _esperar(200)
     _js(janela, f"tarefas.dominio({{ok: true, dados: {json.dumps(_dominio_envenenado(carga))}}}); ir('dominio')")

@@ -311,6 +311,7 @@ def test_consulta_de_dominio_com_rede_dublada(monkeypatch):
     }
 
     def falso_get(self, url, timeout=None, params=None, headers=None):
+        params = dict(params or {})
         if url == cd.DOH:
             return _Resposta({"Answer": dns.get((params["name"], params["type"]), [])})
         if url.startswith("https://rdap.org/"):

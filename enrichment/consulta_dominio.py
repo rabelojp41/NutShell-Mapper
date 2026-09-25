@@ -1,5 +1,5 @@
 """
-Consulta de dominio na internet: DNS, idade e subdominios.
+Consulta de dominio na internet: DNS, idade, certificados e subdominios.
 
 So roda quando pedida (`--online`), como o resto do enriquecimento. E tudo
 PASSIVO - nenhuma requisicao chega ao servidor do dominio investigado:
@@ -9,11 +9,12 @@ PASSIVO - nenhuma requisicao chega ao servidor do dominio investigado:
     perguntou. Sem dependencia nova: e uma requisicao HTTPS com JSON.
   - Idade e registrador pelo RDAP (rdap.org encaminha ao registro certo).
     Dominio de phishing costuma ter dias de vida.
-  - Subdominios pelos logs de Certificate Transparency (crt.sh e Cert
-    Spotter). Todo
-    certificado HTTPS emitido e publico; os nomes dentro dele revelam os
-    subdominios que o dono ja pos no ar. Nada de forca bruta: enumerar
-    nomes batendo no DNS do alvo seria reconhecimento ativo.
+  - Certificados e subdominios pelos logs de Certificate Transparency
+    (crt.sh e Cert Spotter). Todo certificado HTTPS emitido e publico: os
+    nomes dentro dele revelam os subdominios e, quando ha outro dominio no
+    mesmo certificado, a infraestrutura irma. Nada de conectar no servidor
+    para ler o certificado - isso avisaria o atacante - e nada de forca
+    bruta de subdominio, que seria reconhecimento ativo.
 
 O que sai daqui vai para terceiros (Cloudflare, rdap.org, crt.sh, Cert Spotter): o nome
 do dominio. Nunca o e-mail, nunca o conteudo.
@@ -42,9 +43,29 @@ TIMEOUT_CRTSH = 45
 TENTATIVAS_CRTSH = 2
 ESPERA_CRTSH = 4
 LIMITE_DE_SUBDOMINIOS = 500
+LIMITE_DE_CERTIFICADOS = 200
+# Emissores gratuitos e automaticos (ACME).
+EMISSORES_GRATUITOS = ("let's encrypt", "zerossl", "google trust", "buypass", "ssl.com", "cloudflare")
+# Certificados compartilhados por CDN, que juntam dominios de donos
+# diferentes: o nome deles no certificado nao liga os dominios entre si.
+NOMES_DE_CERTIFICADO_COMPARTILHADO = ("cloudflaressl.com", "sni.cloudflaressl.com", "incapsula.com", "akamaized.net")
 AGENTE = {"User-Agent": "NutShellMapper/1.0"}
 
 TIPOS_DNS = {"A": 1, "AAAA": 28, "MX": 15, "NS": 2, "TXT": 16, "CNAME": 5}
+
+
+@dataclass
+class Certificado:
+    id: str
+    emissor: str
+    emitido_em: str
+    expira_em: str
+    nomes: list[str] = field(default_factory=list)
+    revogado: bool = False
+    fonte: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass
@@ -60,6 +81,14 @@ class ConsultaDominio:
     subdominios: list[str] = field(default_factory=list)
     subdominios_truncados: bool = False
     imitacao: str = ""
+    certificados: list[dict] = field(default_factory=list)
+    certificados_truncados: bool = False
+    primeiro_certificado: str = ""
+    # False quando so o Cert Spotter respondeu: ai a lista tem apenas os
+    # certificados vigentes, e o "primeiro" e so o mais antigo ainda valido.
+    historico_completo: bool = False
+    emissores: dict[str, int] = field(default_factory=dict)
+    dominios_irmaos: list[str] = field(default_factory=list)
     observacoes: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
 
@@ -120,7 +149,24 @@ def _nomes_validos(nomes, dominio: str) -> set[str]:
     return saida
 
 
-def _subdominios_crtsh(sessao: requests.Session, dominio: str) -> tuple[set[str], str]:
+def _data(valor: str) -> str:
+    """Datas do crt.sh vem sem fuso ('2023-07-01T00:00:00'); as do Cert Spotter, com Z."""
+    valor = str(valor or "").strip()
+    if not valor:
+        return ""
+    return valor if valor.endswith("Z") or "+" in valor[10:] else valor + "Z"
+
+
+def _emissor_legivel(bruto: str) -> str:
+    """'C=US, O=Let's Encrypt, CN=R3' -> "Let's Encrypt"."""
+    for parte in str(bruto or "").split(","):
+        chave, _, valor = parte.strip().partition("=")
+        if chave.strip().upper() == "O" and valor:
+            return valor.strip()
+    return str(bruto or "").strip()
+
+
+def _certificados_crtsh(sessao: requests.Session, dominio: str) -> tuple[list[Certificado], str]:
     # O crt.sh vive sobrecarregado e devolve 502/503 com frequencia; uma
     # segunda tentativa as vezes passa.
     for tentativa in range(TENTATIVAS_CRTSH):
@@ -129,43 +175,140 @@ def _subdominios_crtsh(sessao: requests.Session, dominio: str) -> tuple[set[str]
             break
         time.sleep(ESPERA_CRTSH * (tentativa + 1))
     if dados is None:
-        return set(), erro
-    return _nomes_validos(
-        (n for c in dados for n in str(c.get("name_value", "")).splitlines()), dominio
-    ), ""
+        return [], erro
+    saida = []
+    for c in dados:
+        saida.append(Certificado(
+            id=f"crt.sh:{c.get('id', '')}",
+            emissor=_emissor_legivel(c.get("issuer_name", "")),
+            emitido_em=_data(c.get("not_before", "")),
+            expira_em=_data(c.get("not_after", "")),
+            nomes=sorted({n.strip().lower() for n in str(c.get("name_value", "")).splitlines() if n.strip()}),
+            fonte="crt.sh",
+        ))
+    return saida, ""
 
 
-def _subdominios_certspotter(sessao: requests.Session, dominio: str) -> tuple[set[str], str]:
-    nomes: set[str] = set()
+def _certificados_certspotter(sessao: requests.Session, dominio: str) -> tuple[list[Certificado], str]:
+    saida: list[Certificado] = []
     depois = None
     for _pagina in range(PAGINAS_CERTSPOTTER):
-        parametros = {"domain": dominio, "include_subdomains": "true", "expand": "dns_names"}
+        parametros = [("domain", dominio), ("include_subdomains", "true"),
+                      ("expand", "dns_names"), ("expand", "issuer"), ("expand", "revocation")]
         if depois:
-            parametros["after"] = depois
+            parametros.append(("after", depois))
         dados, erro = _get(sessao, CERTSPOTTER, TIMEOUT, params=parametros, headers=AGENTE)
         if dados is None:
-            return nomes, erro if not nomes else ""
+            return saida, erro if not saida else ""
         if not dados:
             break
-        nomes |= _nomes_validos((n for c in dados for n in c.get("dns_names") or []), dominio)
+        for c in dados:
+            emissor = c.get("issuer") or {}
+            saida.append(Certificado(
+                id=f"certspotter:{c.get('cert_sha256') or c.get('id', '')}",
+                emissor=emissor.get("friendly_name") or _emissor_legivel(emissor.get("name", "")),
+                emitido_em=_data(c.get("not_before", "")),
+                expira_em=_data(c.get("not_after", "")),
+                nomes=sorted({str(n).strip().lower() for n in c.get("dns_names") or []}),
+                revogado=bool(c.get("revoked")),
+                fonte="Cert Spotter",
+            ))
         depois = dados[-1].get("id")
-    return nomes, ""
+    return saida, ""
+
+
+def consultar_certificados(sessao: requests.Session, dominio: str) -> tuple[list[Certificado], str]:
+    """
+    Certificados emitidos para o dominio, pelos logs de Certificate
+    Transparency.
+
+    Duas fontes, porque o crt.sh cai com frequencia: ele tem o historico
+    inteiro (inclusive certificado vencido); o Cert Spotter responde melhor,
+    mas so traz os ainda validos. Se as duas responderem, a uniao - o mesmo
+    certificado visto pelas duas conta uma vez.
+    """
+    todos, erro_crt = _certificados_crtsh(sessao, dominio)
+    extra, erro_cs = _certificados_certspotter(sessao, dominio)
+    if not todos and not extra and erro_crt and erro_cs:
+        return [], f"crt.sh ({erro_crt}) e Cert Spotter ({erro_cs}) falharam"
+    vistos: set[tuple] = set()
+    unicos: list[Certificado] = []
+    for c in todos + extra:
+        chave = (c.emitido_em[:10], tuple(c.nomes))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        unicos.append(c)
+    unicos.sort(key=lambda c: c.emitido_em, reverse=True)
+    return unicos, ""
 
 
 def consultar_subdominios(sessao: requests.Session, dominio: str) -> tuple[list[str], str]:
-    """
-    Subdominios pelos logs de Certificate Transparency.
+    certificados, erro = consultar_certificados(sessao, dominio)
+    return sorted(_nomes_validos((n for c in certificados for n in c.nomes), dominio)), erro
 
-    Duas fontes, porque o crt.sh cai com frequencia: ele tem o historico
-    inteiro (inclusive certificado vencido); o Cert Spotter responde
-    melhor. Se as duas responderem, a uniao.
+
+def analisar_certificados(c: "ConsultaDominio", certificados: list[Certificado]) -> None:
     """
-    nomes, erro_crt = _subdominios_crtsh(sessao, dominio)
-    extra, erro_cs = _subdominios_certspotter(sessao, dominio)
-    nomes |= extra
-    if not nomes and erro_crt and erro_cs:
-        return [], f"crt.sh ({erro_crt}) e Cert Spotter ({erro_cs}) falharam"
-    return sorted(nomes), ""
+    O que os certificados dizem sobre a infraestrutura.
+
+      - Quando o primeiro certificado saiu: domino de campanha costuma
+        ganhar HTTPS dias antes do disparo.
+      - Emissor gratuito e automatico: nao e prova de nada (metade da web
+        usa Let's Encrypt), mas e o unico que o atacante usa.
+      - Outros dominios no MESMO certificado: quem pos os dois nomes juntos
+        controla os dois. E o pivo mais valioso daqui - revela a
+        infraestrutura irma da campanha.
+    """
+    c.certificados = [x.to_dict() for x in certificados[:LIMITE_DE_CERTIFICADOS]]
+    c.certificados_truncados = len(certificados) > LIMITE_DE_CERTIFICADOS
+    if not certificados:
+        return
+    agora = datetime.now(timezone.utc)
+
+    c.historico_completo = any(x.fonte == "crt.sh" for x in certificados)
+    datas = [x.emitido_em for x in certificados if x.emitido_em]
+    if datas:
+        c.primeiro_certificado = min(datas)
+        try:
+            dias = (agora - datetime.fromisoformat(c.primeiro_certificado.replace("Z", "+00:00"))).days
+            if dias < 30 and c.historico_completo:
+                c.observacoes.append(f"primeiro certificado HTTPS emitido há {dias} dia(s): infraestrutura nova")
+            elif dias < 30:
+                c.observacoes.append(
+                    f"o certificado vigente mais antigo tem {dias} dia(s) (sem o histórico do crt.sh, "
+                    "não dá para dizer se é o primeiro)"
+                )
+        except ValueError:
+            pass
+
+    emissores: dict[str, int] = {}
+    for x in certificados:
+        emissores[x.emissor] = emissores.get(x.emissor, 0) + 1
+    c.emissores = dict(sorted(emissores.items(), key=lambda kv: -kv[1]))
+    if emissores and all(any(g in e.lower() for g in EMISSORES_GRATUITOS) for e in emissores):
+        c.observacoes.append("só certificados gratuitos e automáticos (comum, mas é o único tipo que golpe usa)")
+
+    irmaos: set[str] = set()
+    for x in certificados:
+        for nome in x.nomes:
+            base = dominios.registravel(nome.lstrip("*."))
+            if base and base != c.registravel and not any(base.endswith(s) for s in NOMES_DE_CERTIFICADO_COMPARTILHADO):
+                irmaos.add(base)
+    c.dominios_irmaos = sorted(irmaos)[:50]
+    if c.dominios_irmaos:
+        c.observacoes.append(
+            f"{len(irmaos)} outro(s) domínio(s) no mesmo certificado: quem os pôs juntos controla os dois "
+            f"({', '.join(c.dominios_irmaos[:4])}{'…' if len(irmaos) > 4 else ''})"
+        )
+
+    revogados = sum(1 for x in certificados if x.revogado)
+    if revogados:
+        c.observacoes.append(f"{revogados} certificado(s) revogado(s): a autoridade pode ter reagido a denúncia")
+
+    validos = [x for x in certificados if x.expira_em and x.expira_em > agora.isoformat()[:19]]
+    if not validos:
+        c.observacoes.append("nenhum certificado válido hoje: o site não serve HTTPS confiável")
 
 
 def consultar_dominio(dominio: str, certificados: bool = True) -> ConsultaDominio:
@@ -224,9 +367,11 @@ def consultar_dominio(dominio: str, certificados: bool = True) -> ConsultaDomini
                 pass
 
         if certificados:
-            subs, erro = consultar_subdominios(sessao, c.registravel)
+            lista, erro = consultar_certificados(sessao, c.registravel)
             if erro:
                 c.erros.append(f"certificados: {erro}")
+            analisar_certificados(c, lista)
+            subs = sorted(_nomes_validos((n for x in lista for n in x.nomes), c.registravel))
             c.subdominios_truncados = len(subs) > LIMITE_DE_SUBDOMINIOS
             c.subdominios = subs[:LIMITE_DE_SUBDOMINIOS]
             suspeitos = [s for s in c.subdominios if dominios.imitacao_de_marca(s.split(".")[0] + ".x")]

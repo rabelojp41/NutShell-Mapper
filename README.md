@@ -57,8 +57,8 @@ winget install -e --id Python.Python.3.10
 ```
 
 ```bash
-git clone https://github.com/rabelojp41/RabMapper.git
-cd RabMapper
+git clone https://github.com/rabelojp41/NutShell-Mapper.git
+cd NutShell-Mapper
 py -3.10 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -302,14 +302,56 @@ visitar o link ou carregar o pixel avisa o atacante que o e-mail foi lido.
 
 Na interface, basta soltar o `.eml` na janela.
 
+#### Da analise a inteligencia
+
+```bash
+python main.py email mensagem.eml --online --ia --yara --pdf --navigator
+```
+
+- **Diamond Model**: adversario (as personas que ele controla - o operador
+  real fica desconhecido, sem palpite), capacidade (tecnicas, isca, truques
+  de evasao), infraestrutura separada em Tipo 1 (do adversario) e Tipo 2
+  (servico legitimo abusado, como o Gmail) e vitima com endereco mascarado.
+  Mais os meta-atributos, os eixos social-politico e tecnico e os **pivos**
+  para caçar o resto da campanha.
+- **TTPs** como Tatica -> Tecnica -> **Procedimento** (como ESTE adversario
+  fez), com a evidencia de cada um - incluindo Resource Development, como a
+  conta de webmail criada para o golpe (T1585.002) e o dominio recem
+  registrado (T1583.001).
+- **Pyramid of Pain** e **IoC x IoA**: cada indicador no degrau de "dor"
+  que causa ao atacante trocar. O topo (comportamento) sobrevive a troca
+  de infraestrutura; a base serve para bloqueio imediato.
+- **Grafo de pivo** interativo na interface (arrastar, clicar para ver o
+  detalhe) e estatico no PDF.
+- **Regra YARA da campanha** (`--yara`), so com indicadores do atacante que
+  aparecem literalmente no arquivo, nada da vitima; validada contra o
+  proprio e-mail, contra outra mensagem da campanha e contra um e-mail comum.
+- **Resumo executivo pela IA local** (`--ia`): o Qwen recebe os achados e um
+  trecho do texto do e-mail, marcado como dado do atacante. Todo dominio,
+  endereco, IP, URL e tecnica que ele citar e conferido; frase no e-mail
+  que tenta dar ordem a uma IA e sinalizada.
+- **Relatorio executivo em PDF** (`--pdf`): primeira pagina para quem decide
+  (veredito, resumo, o que fazer agora), depois Diamond, TTPs, piramide,
+  grafo e evidencias. Recomendacoes geradas pela ferramenta, nao pela IA;
+  indicadores defangados.
+- **Layer do ATT&CK Navigator** (`--navigator`): abre direto no Navigator
+  com as tecnicas pintadas e o procedimento no comentario.
+
+Com `--online`, cada dominio envolvido passa pela consulta passiva abaixo,
+incluindo a **analise de certificados**: emissor, primeiro certificado
+emitido e, principalmente, os **dominios irmaos** - outros dominios no mesmo
+certificado, que quem os pos juntos controla.
+
 ### Dominio
 
 ```bash
 python main.py dominio exemplo.com
 ```
 
-DNS (IPs, servidor de e-mail, SPF, DMARC), idade e registrador (RDAP) e
-subdominios encontrados nos logs publicos de Certificate Transparency
+DNS (IPs, servidor de e-mail, SPF, DMARC), idade e registrador (RDAP),
+certificados (emissor, primeiro emitido, revogados, dominios irmaos no
+mesmo certificado) e subdominios encontrados nos logs publicos de
+Certificate Transparency
 (crt.sh, com o Cert Spotter de reserva quando o crt.sh cai). Tudo
 **passivo**: nenhuma requisicao chega ao servidor do dominio investigado,
 e nada de forca bruta de subdominio. O que sai da maquina e so o nome do

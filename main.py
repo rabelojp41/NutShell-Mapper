@@ -549,29 +549,62 @@ def comando_email(args: argparse.Namespace) -> int:
         from enrichment.consulta_dominio import consultar_dominio
 
         alvos = []
-        for d in [x.dominio for x in r.identidades if x.campo != "Message-ID"] + \
-                 [l.dominio for l in r.links if l.tipo in ("http", "encurtador")] +                  [urlsplit(u).hostname or "" for u in r.imagens_remotas]:
+        candidatos = [x.dominio for x in r.identidades if x.campo != "Message-ID"]
+        candidatos += [l.dominio for l in r.links if l.tipo in ("http", "encurtador")]
+        candidatos += [urlsplit(u).hostname or "" for u in r.imagens_remotas]
+        for d in candidatos:
             base = registravel(d) if d else ""
             if base and not e_webmail(base) and base not in alvos:
                 alvos.append(base)
-        print("\n  Consultando domínios (DNS, RDAP, crt.sh). Só o nome do domínio sai daqui.")
+        print("\n  Consultando domínios (DNS, RDAP, certificados). Só o nome do domínio sai daqui.")
         for alvo in alvos[:6]:
             _secao(f"Domínio {alvo}")
             try:
-                c = consultar_dominio(alvo, certificados=False)
+                c = consultar_dominio(alvo, certificados=True)
             except ValueError as erro:
                 print(f"  {erro}")
                 continue
             consultas.append(c.to_dict())
             _imprimir_dominio(c)
 
+    # --- Diamond Model, TTPs e Pyramid of Pain: calculo local, sempre ---
+    from core.diamante import diamante_do_email
+    from core.piramide import piramide_do_email
+
+    diamante = diamante_do_email(r, consultas)
+    piramide = piramide_do_email(r, diamante)
+    _secao("Diamond Model")
+    for vertice in (diamante.adversario, diamante.capacidade, diamante.infraestrutura, diamante.vitima):
+        print(f"  {vertice.nome}")
+        for item in vertice.itens[:6]:
+            tipo = f"[{item.tipo}] " if item.tipo else ""
+            print(f"    - {tipo}{defang(item.valor) if '.' in item.valor and ' ' not in item.valor else item.valor}  ({item.descricao})")
+    print(f"\n  Eixo social : {diamante.eixo_social}")
+    print(f"  Eixo técnico: {diamante.eixo_tecnico}")
+    _secao("TTPs (tática -> técnica -> procedimento)")
+    for t in diamante.ttps:
+        print(f"  {t.tatica_nome:26} {t.tecnica:10} {t.tecnica_nome}")
+        print(f"  {'':26} {t.procedimento}")
+    _secao("Pyramid of Pain")
+    contagem = piramide.contagem()
+    for d in reversed(piramide.degraus):
+        print(f"  {d['nome']:24} {contagem[d['id']]:3}   (dor: {d['dor']})")
+    print(f"\n  {piramide.leitura}")
+    if diamante.pivos:
+        _secao("Próximos pivôs")
+        for pivo in diamante.pivos:
+            print(f"  {pivo.de} -> {pivo.para}: {pivo.acao}")
+
     saida = Path(args.saida)
-    if args.json or args.exportar_iocs or args.yara:
+    if args.json or args.exportar_iocs or args.yara or args.pdf or args.navigator:
         saida.mkdir(parents=True, exist_ok=True)
-    if args.yara:
+
+    regra = None
+    if args.yara or args.pdf:
         from core.yara_email import gerar_regra_email
 
         regra = gerar_regra_email(r, caminho)
+    if args.yara:
         _secao("Regra YARA da campanha")
         if regra.texto:
             print(regra.texto)
@@ -583,10 +616,53 @@ def comando_email(args: argparse.Namespace) -> int:
             destino_yara = saida / f"{regra.nome}.yar"
             destino_yara.write_text(regra.texto, encoding="utf-8")
             print(f"  Salva em {destino_yara}")
+
+    resumo = None
+    if args.ia:
+        from core.ia_email import gerar_resumo_email
+
+        _secao(f"Resumo por IA ({args.modelo_ia}, local)")
+        print("  Gerando... a primeira chamada carrega o modelo na GPU e pode levar um a dois minutos.")
+        resumo = gerar_resumo_email(r, diamante, consultas, modelo=args.modelo_ia)
+        if resumo.gerado:
+            print()
+            for linha in resumo.texto.splitlines():
+                print(f"  {linha}")
+            print(f"\n  {resumo.ressalva}")
+            for inv in resumo.invencoes:
+                print(f"  ! não confere: {inv}")
+        else:
+            print(f"  Não gerado: {resumo.erro}")
+        for aviso in resumo.avisos:
+            print(f"  - {aviso}")
+
+    if args.navigator:
+        from reports.navigator import salvar_layer
+
+        destino_layer = salvar_layer(f"E-mail: {r.assunto[:60]}", diamante.ttps,
+                                     saida / f"{caminho.stem}_{r.sha256[:8]}_navigator.json",
+                                     f"Técnicas observadas no e-mail {caminho.name} ({r.veredito}).")
+        print(f"\n  Layer do ATT&CK Navigator: {destino_layer}")
+    if args.pdf:
+        from core.grafo import grafo_do_email
+        from reports.relatorio_executivo import ErroRelatorioExecutivo, salvar_pdf_email
+
+        try:
+            destino_pdf = salvar_pdf_email(
+                r, saida / f"{caminho.stem}_{r.sha256[:8]}_executivo.pdf", diamante, piramide,
+                grafo_do_email(r, diamante, consultas), resumo, regra, consultas,
+            )
+            print(f"  Relatório executivo (PDF): {destino_pdf}")
+        except ErroRelatorioExecutivo as erro:
+            print(f"  PDF não gerado: {erro}", file=sys.stderr)
     if args.json:
         destino = saida / f"{caminho.stem}_{r.sha256[:8]}_email.json"
         dados = r.to_dict()
         dados["dominios"] = consultas
+        dados["diamante"] = diamante.to_dict()
+        dados["piramide"] = piramide.to_dict()
+        if resumo is not None:
+            dados["resumo_ia"] = resumo.to_dict()
         destino.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n  JSON: {destino}")
     if args.exportar_iocs:
@@ -839,6 +915,10 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true", help="salva o resultado completo em JSON")
     p.add_argument("--yara", action="store_true", help="gera e valida uma regra YARA da campanha")
+    p.add_argument("--ia", action="store_true", help="resumo executivo pela IA local (Ollama), conferido contra os achados")
+    p.add_argument("--modelo-ia", default=MODELO_PADRAO, help=f"modelo do Ollama (padrao: {MODELO_PADRAO})")
+    p.add_argument("--pdf", action="store_true", help="relatório executivo em PDF (Diamond, TTPs, pirâmide, grafo, YARA)")
+    p.add_argument("--navigator", action="store_true", help="exporta a layer do ATT&CK Navigator")
     p.add_argument("-o", "--saida", default="output", help="diretorio de saida (padrao: output)")
     p.add_argument("--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"])
     p.add_argument("--confianca-minima", choices=["alta", "media", "baixa"], default="media")

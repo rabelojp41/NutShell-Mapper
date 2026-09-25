@@ -233,7 +233,7 @@ const estado = {
   resultado: null,
   filtro: { iocs: "todos", buscaIocs: "", tecnicas: "todos", strings: "todos", buscaStrings: "", limiteStrings: 300 },
   bazaar: { hash: "", carregando: false, consulta: null, erro: "", baixando: false, baixada: null },
-  email: { arquivo: null, online: false, carregando: false, dados: null, erro: "", mensagem: "" },
+  email: { arquivo: null, online: false, carregando: false, dados: null, erro: "", mensagem: "", ia: null, yara: null },
   dominio: { valor: "", subdominios: true, carregando: false, dados: null, erro: "", filtro: "" },
   attackAtualizando: false,
   menuAberto: null,
@@ -2064,13 +2064,15 @@ function resultadoDoEmail(d) {
 
   return h("div", { class: "mt-16" },
     d.avisos?.length ? nota("aviso", d.avisos.join(" ")) : null,
-    veredito, painelSinais, identidades, caminho, links, anexos, iocs, doms, oculto, cabecalhos);
+    veredito, acoesDoEmail(), blocoIAEmail(), painelSinais, blocoDiamante(d.diamante), blocoTTPs(d.diamante),
+    blocoPiramide(d.piramide), blocoGrafo(d.grafo), blocoYaraEmail(), identidades, caminho, links, anexos, iocs,
+    doms, oculto, cabecalhos);
 }
 
 function analisarEmail() {
   const e = estado.email;
   if (!e.arquivo) return;
-  Object.assign(e, { carregando: true, erro: "", dados: null, mensagem: "" });
+  Object.assign(e, { carregando: true, erro: "", dados: null, mensagem: "", ia: null, yara: null });
   renderizar();
   ponte.analisarEmail(e.online);
 }
@@ -2179,6 +2181,358 @@ tarefas.dominio = (t) => {
   else f.erro = t.erro;
   if (estado.vista === "dominio") renderizar();
 };
+
+// ============================================================
+// CTI do e-mail: acoes, IA, Diamond Model, TTPs, piramide e grafo
+// ============================================================
+//
+// Os desenhos sao SVG montado elemento por elemento. Nenhum rotulo vira
+// markup: todo texto entra por textContent, como no resto da pagina.
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svg(tag, atributos = {}, texto = null) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(atributos)) {
+    if (v !== null && v !== undefined && v !== false) el.setAttribute(k, String(v));
+  }
+  if (texto !== null) el.textContent = String(texto);
+  return el;
+}
+
+function curto(texto, limite) {
+  texto = String(texto || "");
+  return texto.length > limite ? texto.slice(0, limite - 1) + "…" : texto;
+}
+
+function acoesDoEmail() {
+  const e = estado.email;
+  const ia = e.ia || {};
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Produzir inteligência")),
+    h(
+      "div",
+      { class: "painel-corpo cti-acoes" },
+      h("button", { class: "btn btn-primario", disabled: ia.carregando, onclick: resumirEmailComIA },
+        icone(ia.carregando ? "recarregar" : "faisca"), ia.carregando ? "Gerando resumo…" : ia.dados ? "Gerar resumo de novo" : "Resumo por IA"),
+      h("button", { class: "btn", onclick: gerarYaraEmail }, icone("escudo"), "Regra YARA da campanha"),
+      h("button", { class: "btn", onclick: salvarPdfEmail }, icone("arquivo"), "Relatório executivo (PDF)"),
+      h("button", { class: "btn", onclick: exportarNavigatorEmail }, icone("grade"), "Layer do ATT&CK Navigator"),
+    ),
+  );
+}
+
+function blocoIAEmail() {
+  const ia = estado.email.ia;
+  if (!ia) return null;
+  if (ia.carregando) {
+    return h("div", { class: "mt-16" }, nota("info", h("span", { id: "ia-email-andamento" }, ia.mensagem || "Carregando o modelo na GPU…")));
+  }
+  if (ia.erro) return h("div", { class: "mt-16" }, nota("perigo", h("strong", {}, "Resumo não gerado. "), ia.erro));
+  const d = ia.dados;
+  if (!d) return null;
+  if (!d.gerado) return h("div", { class: "mt-16" }, nota("aviso", h("strong", {}, "Resumo não gerado. "), d.erro || ""));
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, icone("faisca"), h("span", { class: "painel-titulo" }, "Resumo executivo"),
+      h("span", { class: `etiqueta ${d.confiavel ? "ok" : "alta"}` }, d.confiavel ? "conferido: nada inventado" : `${d.invencoes.length} afirmação(ões) sem respaldo`),
+      h("span", { class: "t3", style: "margin-left:auto;font-size:12px" }, `${d.modelo} · ${fmtNum(d.duracao_segundos, 0)} s`)),
+    h("div", { class: "painel-corpo pilha" },
+      d.texto.split("\n").filter((p) => p.trim()).map((p) => h("p", { class: "ia-paragrafo" }, p)),
+      d.invencoes.map((i) => nota("perigo", h("strong", {}, `${i.tipo}: ${i.valor}. `), i.explicacao)),
+      d.avisos.filter((a) => !a.includes("afirmação")).map((a) => nota("aviso", a)),
+      h("div", { class: "t3", style: "font-size:12px" }, d.ressalva)),
+  );
+}
+
+function blocoYaraEmail() {
+  const y = estado.email.yara;
+  if (!y) return null;
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, icone("escudo"), h("span", { class: "painel-titulo" }, "Regra YARA da campanha"),
+      h("span", { class: `etiqueta ${y.valida ? "ok" : "alta"}` }, y.valida ? "válida" : "não validada"),
+      y.texto && h("button", { class: "btn btn-pequeno", style: "margin-left:auto", onclick: () => copiar(y.texto, "Regra copiada") }, icone("copiar"), "Copiar"),
+      y.texto && h("button", { class: "btn btn-pequeno", onclick: salvarYaraEmail }, icone("baixar"), "Salvar .yar")),
+    h("div", { class: "painel-corpo pilha" },
+      h("p", { class: "t2", style: "margin:0" }, "Pega outras mensagens da mesma campanha: só entram indicadores do atacante que aparecem literalmente no arquivo, nada da vítima. Validada contra o próprio e-mail e contra um e-mail comum."),
+      y.avisos.map((a) => nota("aviso", a)),
+      y.texto && realcarYara(y.texto)),
+  );
+}
+
+// ---------- Diamond Model ----------
+
+function blocoDiamante(dm) {
+  if (!dm) return null;
+  const L = 640, A = 372, cx = L / 2, cy = A / 2 + 14, r = 92;
+  const desenho = svg("svg", { viewBox: `0 0 ${L} ${A}`, class: "diamante-svg", role: "img", "aria-label": "Diamond Model" });
+  const pontos = [[cx, cy - r], [cx + r * 1.25, cy], [cx, cy + r], [cx - r * 1.25, cy]];
+  desenho.appendChild(svg("polygon", { points: pontos.map((p) => p.join(",")).join(" "), class: "diamante-forma" }));
+  desenho.appendChild(svg("line", { x1: cx, y1: cy - r, x2: cx, y2: cy + r, class: "diamante-eixo" }));
+  desenho.appendChild(svg("line", { x1: cx - r * 1.25, y1: cy, x2: cx + r * 1.25, y2: cy, class: "diamante-eixo" }));
+  desenho.appendChild(svg("text", { x: cx + 6, y: cy - 30, class: "diamante-rotulo-eixo" }, "social-político"));
+  desenho.appendChild(svg("text", { x: cx - 108, y: cy - 6, class: "diamante-rotulo-eixo" }, "técnico"));
+
+  const vertice = (v, x, y, ancora) => {
+    const g = svg("g", { class: "diamante-vertice" });
+    g.appendChild(svg("text", { x, y, "text-anchor": ancora, class: "diamante-nome" }, v.nome));
+    v.itens.slice(0, 4).forEach((item, k) =>
+      g.appendChild(svg("text", { x, y: y + 16 + k * 14, "text-anchor": ancora, class: `diamante-item${item.tipo === "tipo 1" ? " t1" : ""}` }, curto(item.valor, 36))));
+    if (v.itens.length > 4) g.appendChild(svg("text", { x, y: y + 16 + 4 * 14, "text-anchor": ancora, class: "diamante-mais" }, `+ ${v.itens.length - 4}`));
+    desenho.appendChild(g);
+  };
+  vertice(dm.adversario, cx, 18, "middle");
+  vertice(dm.capacidade, cx + r * 1.25 + 14, cy - 28, "start");
+  vertice(dm.infraestrutura, cx - r * 1.25 - 14, cy - 28, "end");
+  vertice(dm.vitima, cx, cy + r + 22, "middle");
+  for (const [x, y] of pontos) desenho.appendChild(svg("circle", { cx: x, cy: y, r: 5, class: "diamante-ponto" }));
+
+  const lista = (v) => h("div", { class: "diamante-lista" },
+    h("div", { class: "diamante-lista-cab" }, h("strong", {}, v.nome), h("span", { class: "t3" }, v.resumo)),
+    v.itens.length ? h("ul", {}, v.itens.map((i) => h("li", {},
+      i.tipo && h("span", { class: `etiqueta ${i.tipo === "tipo 1" ? "alta" : ""}` }, i.tipo),
+      h("span", { class: "mono" }, i.valor), h("span", { class: "t3" }, ` — ${i.descricao}`)))) : h("div", { class: "t3" }, "nada observado"));
+
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Diamond Model"),
+      h("span", { class: "t3", style: "font-size:12px" }, "adversário · capacidade · infraestrutura · vítima")),
+    h("div", { class: "painel-corpo pilha" },
+      h("div", { class: "diamante-desenho" }, desenho),
+      h("dl", { class: "defs" },
+        Object.entries(dm.meta).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v || "—")]),
+        h("dt", {}, "Eixo social-político"), h("dd", {}, dm.eixo_social),
+        h("dt", {}, "Eixo técnico"), h("dd", {}, dm.eixo_tecnico)),
+      h("div", { class: "diamante-listas" }, [dm.adversario, dm.capacidade, dm.infraestrutura, dm.vitima].map(lista)),
+      dm.pivos.length ? h("div", {},
+        h("strong", {}, "Próximos pivôs"),
+        h("ul", { class: "pivos" }, dm.pivos.map((p) => h("li", {}, h("span", { class: "etiqueta acento" }, `${p.de} → ${p.para}`), " ", p.acao)))) : null),
+  );
+}
+
+function blocoTTPs(dm) {
+  if (!dm?.ttps?.length) return null;
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, `TTPs (${dm.ttps.length})`),
+      h("span", { class: "t3", style: "font-size:12px" }, "tática → técnica → procedimento")),
+    h("div", { class: "tabela-wrap" }, h("table", { class: "tabela" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Tática"), h("th", {}, "Técnica"), h("th", {}, "Procedimento (como este adversário fez)"))),
+      h("tbody", {}, dm.ttps.map((t) => h("tr", {},
+        h("td", { class: "estreita t2" }, t.tatica_nome),
+        h("td", {}, linkTecnica(t.tecnica), h("div", { class: "t3", style: "font-size:12px" }, t.tecnica_nome)),
+        h("td", {}, t.procedimento, t.evidencias.map((ev) => h("div", { class: "t3", style: "font-size:12px" }, ev)))))))),
+  );
+}
+
+// ---------- Pyramid of Pain ----------
+
+function blocoPiramide(p) {
+  if (!p) return null;
+  const degraus = [...p.degraus].reverse();
+  const maior = Math.max(1, ...Object.values(p.contagem));
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Pyramid of Pain"),
+      h("span", { class: "t3", style: "font-size:12px" }, "quanto custa ao atacante trocar cada indicador")),
+    h("div", { class: "painel-corpo pilha" },
+      h("div", { class: "piramide" }, degraus.map((d, k) => {
+        const n = p.contagem[d.id] || 0;
+        const itens = p.itens.filter((i) => i.degrau === d.id);
+        const faixa = h("div", { class: `piramide-faixa nivel-${k}${n ? "" : " vazia"}`, title: itens.map((i) => i.valor).join("\n") },
+          h("span", { class: "piramide-nome" }, d.nome), h("span", { class: "piramide-n" }, n));
+        aplicarEstilo(faixa, `width:${34 + k * 13}%`);
+        return h("div", { class: "piramide-linha" }, faixa,
+          h("div", { class: "piramide-info" }, h("span", { class: "etiqueta" }, d.dor), h("span", { class: "t3" }, d.explicacao)));
+      })),
+      h("p", { class: "t2", style: "margin:0" }, p.leitura),
+      h("div", { class: "ioc-ioa" },
+        ["IoA", "IoC"].map((classe) => {
+          const itens = p.itens.filter((i) => i.classe === classe);
+          return h("div", {},
+            h("strong", {}, classe === "IoA" ? `Indicadores de ataque (${itens.length})` : `Indicadores de comprometimento (${itens.length})`),
+            h("div", { class: "t3", style: "font-size:12px;margin-bottom:6px" }, classe === "IoA" ? "comportamento: vale para a próxima campanha" : "valores: o atacante troca em minutos"),
+            h("div", { class: "etiquetas" }, itens.slice(0, 16).map((i) => h("span", { class: `etiqueta ${classe === "IoA" ? "acento" : "mono"}`, title: i.origem }, curto(classe === "IoC" ? defang(i.valor) : i.valor, 48)))));
+        })),
+    ),
+  );
+}
+
+// ---------- Grafo de pivo ----------
+//
+// Layout por forcas, calculado aqui, sem biblioteca: molas nas arestas,
+// repulsao entre nos, a mensagem presa no centro. Arrastar move o no;
+// clicar mostra o detalhe.
+
+const COR_DO_NO = {
+  mensagem: "var(--text)", artefato: "var(--text)", endereco: "var(--alta)", dominio: "var(--accent)",
+  ip: "var(--media)", url: "var(--accent)", tecnica: "var(--ok)", anexo: "var(--alta)", marca: "var(--baixa)", grupo: "var(--baixa)",
+};
+
+function layoutDoGrafo(g, L, A) {
+  const pos = {};
+  const centro = g.nos.find((n) => n.vertice === "centro")?.id;
+  g.nos.forEach((n, k) => {
+    const ang = (2 * Math.PI * k) / g.nos.length;
+    pos[n.id] = n.id === centro ? { x: L / 2, y: A / 2 } : { x: L / 2 + Math.cos(ang) * L * 0.3, y: A / 2 + Math.sin(ang) * A * 0.32 };
+  });
+  for (let passo = 0; passo < 320; passo++) {
+    const forca = {};
+    for (const n of g.nos) forca[n.id] = { x: 0, y: 0 };
+    for (let i = 0; i < g.nos.length; i++) {
+      for (let j = i + 1; j < g.nos.length; j++) {
+        const a = pos[g.nos[i].id], b = pos[g.nos[j].id];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        const d2 = Math.max(dx * dx + dy * dy, 40);
+        const f = 5200 / d2;
+        const d = Math.sqrt(d2);
+        dx /= d; dy /= d;
+        forca[g.nos[i].id].x += dx * f; forca[g.nos[i].id].y += dy * f;
+        forca[g.nos[j].id].x -= dx * f; forca[g.nos[j].id].y -= dy * f;
+      }
+    }
+    for (const a of g.arestas) {
+      const p = pos[a.de], q = pos[a.para];
+      if (!p || !q) continue;
+      const dx = q.x - p.x, dy = q.y - p.y;
+      const d = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+      const f = (d - 120) * 0.02;
+      forca[a.de].x += (dx / d) * f; forca[a.de].y += (dy / d) * f;
+      forca[a.para].x -= (dx / d) * f; forca[a.para].y -= (dy / d) * f;
+    }
+    const calor = 1 - passo / 320;
+    for (const n of g.nos) {
+      if (n.id === centro) continue;
+      const p = pos[n.id];
+      p.x = Math.min(L - 60, Math.max(60, p.x + Math.max(-12, Math.min(12, forca[n.id].x)) * calor));
+      p.y = Math.min(A - 24, Math.max(20, p.y + Math.max(-12, Math.min(12, forca[n.id].y)) * calor));
+    }
+  }
+  return pos;
+}
+
+function blocoGrafo(g) {
+  if (!g?.nos?.length) return null;
+  const L = 900, A = 520;
+  const pos = layoutDoGrafo(g, L, A);
+  const desenho = svg("svg", { viewBox: `0 0 ${L} ${A}`, class: "grafo-svg", role: "img", "aria-label": "Grafo de pivô" });
+  const detalhe = h("div", { class: "grafo-detalhe t2" }, "Clique num nó para ver o que ele é. Arraste para reorganizar.");
+  const linhas = [];
+  for (const a of g.arestas) {
+    if (!pos[a.de] || !pos[a.para]) continue;
+    const linha = svg("line", { class: `grafo-aresta${a.tracejada ? " tracejada" : ""}` });
+    // Ligacao de comportamento (tracejada) fica sem rotulo: a tatica aparece
+    // ao clicar no no, e os rotulos se amontoariam em volta do centro.
+    const rotulo = svg("text", { class: "grafo-rotulo-aresta", "text-anchor": "middle" }, a.tracejada ? "" : a.rotulo);
+    desenho.append(linha, rotulo);
+    linhas.push({ a, linha, rotulo });
+  }
+  const grupos = {};
+  for (const n of g.nos) {
+    const grupo = svg("g", { class: `grafo-no${n.destaque ? " destaque" : ""}`, tabindex: "0" });
+    const raio = n.vertice === "centro" ? 11 : 7;
+    const circulo = svg("circle", { r: raio });
+    circulo.style.setProperty("fill", COR_DO_NO[n.tipo] || "var(--text-2)");
+    grupo.append(circulo, svg("text", { y: raio + 13, "text-anchor": "middle" }, curto(n.rotulo, 30)));
+    desenho.appendChild(grupo);
+    grupos[n.id] = grupo;
+    const mostrar = () => {
+      limpar(detalhe);
+      anexar(detalhe, [h("strong", {}, n.rotulo), " ", h("span", { class: "etiqueta" }, n.tipo), n.detalhe ? h("span", { class: "t3" }, ` — ${n.detalhe}`) : null]);
+      for (const outro of Object.values(grupos)) outro.classList.remove("selecionado");
+      grupo.classList.add("selecionado");
+    };
+    grupo.addEventListener("click", mostrar);
+    grupo.addEventListener("keydown", (ev) => { if (ev.key === "Enter") mostrar(); });
+    grupo.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      grupo.setPointerCapture(ev.pointerId);
+      const mover = (m) => {
+        const caixa = desenho.getBoundingClientRect();
+        pos[n.id] = { x: ((m.clientX - caixa.left) / caixa.width) * L, y: ((m.clientY - caixa.top) / caixa.height) * A };
+        posicionar();
+      };
+      const soltar = () => { grupo.removeEventListener("pointermove", mover); grupo.removeEventListener("pointerup", soltar); };
+      grupo.addEventListener("pointermove", mover);
+      grupo.addEventListener("pointerup", soltar);
+    });
+  }
+  function posicionar() {
+    for (const { a, linha, rotulo } of linhas) {
+      const p = pos[a.de], q = pos[a.para];
+      linha.setAttribute("x1", p.x); linha.setAttribute("y1", p.y);
+      linha.setAttribute("x2", q.x); linha.setAttribute("y2", q.y);
+      rotulo.setAttribute("x", (p.x + q.x) / 2); rotulo.setAttribute("y", (p.y + q.y) / 2 - 3);
+    }
+    for (const [id, grupo] of Object.entries(grupos)) grupo.setAttribute("transform", `translate(${pos[id].x},${pos[id].y})`);
+  }
+  posicionar();
+
+  const legenda = h("div", { class: "grafo-legenda" },
+    [["endereco", "endereço"], ["dominio", "domínio"], ["ip", "IP"], ["tecnica", "técnica"], ["anexo", "anexo"], ["marca", "marca"]].map(([tipo, nome]) => {
+      const bolinha = h("span", { class: "grafo-bolinha" });
+      aplicarEstilo(bolinha, `background:${COR_DO_NO[tipo]}`);
+      return h("span", {}, bolinha, nome);
+    }));
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Grafo de pivô"),
+      h("span", { class: "t3", style: "font-size:12px" }, `${g.nos.length} nós · ${g.arestas.length} ligações`), legenda),
+    h("div", { class: "grafo-area" }, desenho),
+    h("div", { class: "painel-rodape" }, detalhe),
+  );
+}
+
+// ---------- Acoes ----------
+
+function resumirEmailComIA() {
+  estado.email.ia = { carregando: true, mensagem: "" };
+  renderizar();
+  ponte.resumirEmailComIA(estado.opcoes.modelo_ia || estado.ambiente?.modelo_padrao || "");
+}
+
+tarefas.ia_email = (t) => {
+  estado.email.ia = t.ok ? { carregando: false, dados: t.dados } : { carregando: false, erro: t.erro };
+  if (estado.vista === "email") renderizar();
+};
+
+async function gerarYaraEmail() {
+  const r = await chamar("gerarYaraEmail");
+  if (!r?.ok) return avisar("erro", "Regra não gerada", r?.erro || "");
+  estado.email.yara = r.regra;
+  renderizar();
+}
+
+async function salvarYaraEmail() {
+  const r = await chamar("salvarYaraEmail");
+  if (r?.cancelado) return;
+  if (!r?.ok) return avisar("erro", "Regra não salva", r?.erro || "");
+  avisar("ok", "Regra salva", r.caminho);
+}
+
+async function salvarPdfEmail() {
+  const r = await chamar("salvarPdfEmail");
+  if (r?.cancelado) return;
+  if (!r?.ok) return avisar("erro", "PDF não gerado", r?.erro || "");
+  avisar("ok", r.com_ia ? "Relatório executivo salvo" : "Relatório salvo (sem resumo por IA)", r.caminho,
+    { rotulo: "Abrir", fazer: () => chamar("abrirArquivo", r.caminho) });
+}
+
+async function exportarNavigatorEmail() {
+  const r = await chamar("exportarNavigatorEmail");
+  if (r?.cancelado) return;
+  if (!r?.ok) return avisar("erro", "Layer não exportada", r?.erro || "");
+  avisar("ok", "Layer do Navigator salva", "Abra em mitre-attack.github.io/attack-navigator → Open Existing Layer.");
+}
 
 // ============================================================
 // Toca-discos
@@ -2523,6 +2877,11 @@ function conectar() {
     ponte.arrastando.connect((json) => document.body.classList.toggle("arrastando", JSON.parse(json).ativo));
     ponte.andamentoTarefa.connect((json) => {
       const t = JSON.parse(json);
+      if (t.id === "ia_email" && estado.email.ia?.carregando) {
+        estado.email.ia.mensagem = t.mensagem;
+        const el = document.getElementById("ia-email-andamento");
+        if (el) el.textContent = t.mensagem;
+      }
       if (t.id === "email" && estado.email.carregando) {
         estado.email.mensagem = t.mensagem;
         if (estado.vista === "email") renderizar();
@@ -2538,7 +2897,7 @@ function conectar() {
 
     ponte.emailSelecionado.connect((json) => {
       const a = JSON.parse(json);
-      Object.assign(estado.email, { arquivo: a, dados: null, erro: "" });
+      Object.assign(estado.email, { arquivo: a, dados: null, erro: "", ia: null, yara: null });
       ir("email");
     });
     ponte.discoMudou.connect((json) => {

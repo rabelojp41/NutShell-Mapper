@@ -1660,3 +1660,77 @@ details.dobra[open] > summary::after { content: "▾"; }
 .dominio-obs li + li { margin-top: 2px; }
 
 .dominio-subs { display: flex; flex-wrap: wrap; gap: 5px; max-height: 320px; overflow-y: auto; }
+
+/* ---------- Inteligencia do e-mail: acoes, IA, Diamond, piramide, grafo ---------- */
+
+.cti-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ia-paragrafo { margin: 0; line-height: 1.65; color: var(--text); }
+
+.diamante-desenho { display: flex; justify-content: center; }
+.diamante-svg { width: 100%; max-width: 680px; height: auto; overflow: visible; }
+.diamante-forma { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.diamante-eixo { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.55; }
+.diamante-ponto { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+.diamante-nome { fill: var(--text); font-size: 14px; font-weight: 600; }
+.diamante-item { fill: var(--text-2); font-size: 11.5px; font-family: var(--font-mono); }
+.diamante-item.t1 { fill: #ff8f92; }
+.diamante-mais { fill: var(--text-3); font-size: 11px; }
+.diamante-rotulo-eixo { fill: var(--text-3); font-size: 10px; }
+
+.diamante-listas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.diamante-lista { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; min-width: 0; }
+.diamante-lista-cab { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; font-size: 12px; }
+.diamante-lista ul { margin: 0; padding: 0; list-style: none; }
+.diamante-lista li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 3px 0; font-size: 12.5px; overflow-wrap: anywhere; }
+
+.pivos { margin: 6px 0 0; padding: 0; list-style: none; }
+.pivos li { padding: 5px 0; border-top: 1px solid var(--border); }
+.pivos li:first-child { border-top: 0; }
+
+.piramide { display: flex; flex-direction: column; gap: 3px; }
+.piramide-linha { display: grid; grid-template-columns: 46% 1fr; gap: 14px; align-items: center; }
+.piramide-faixa {
+  justify-self: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.piramide-faixa.nivel-0 { background: #4b3bc9; }
+.piramide-faixa.nivel-1 { background: #5a4ad8; }
+.piramide-faixa.nivel-2 { background: #6c5ce7; }
+.piramide-faixa.nivel-3 { background: #7f70f0; }
+.piramide-faixa.nivel-4 { background: #9587f5; }
+.piramide-faixa.nivel-5 { background: #ab9ff9; color: #1d1a3a; }
+.piramide-faixa.vazia { opacity: 0.35; }
+.piramide-n { font-variant-numeric: tabular-nums; }
+.piramide-info { display: flex; gap: 8px; align-items: baseline; font-size: 12px; min-width: 0; }
+
+.ioc-ioa { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.grafo-area { padding: 8px; }
+.grafo-svg { width: 100%; height: auto; display: block; touch-action: none; }
+.grafo-aresta { stroke: var(--border-strong); stroke-width: 1.2; }
+.grafo-aresta.tracejada { stroke-dasharray: 4 4; }
+.grafo-rotulo-aresta { fill: var(--text-3); font-size: 9.5px; pointer-events: none; }
+.grafo-no { cursor: grab; }
+.grafo-no:active { cursor: grabbing; }
+.grafo-no circle { stroke: var(--bg); stroke-width: 2; }
+.grafo-no text { fill: var(--text-2); font-size: 11px; pointer-events: none; }
+.grafo-no.destaque text { fill: var(--text); font-weight: 600; }
+.grafo-no.destaque circle { stroke: var(--text); stroke-width: 1.5; }
+.grafo-no.selecionado circle { stroke: var(--accent-text); stroke-width: 3; }
+.grafo-no:focus-visible { outline: none; }
+.grafo-no:focus-visible circle { stroke: var(--accent-text); stroke-width: 3; }
+.grafo-detalhe { font-size: 12.5px; overflow-wrap: anywhere; }
+.grafo-legenda { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+.grafo-legenda > span { display: inline-flex; align-items: center; gap: 5px; }
+.grafo-bolinha { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }

@@ -204,6 +204,9 @@ class Ponte(QObject):
         # E-mail escolhido e o resultado da ultima analise dele.
         self._email: Path | None = None
         self._resultado_email = None
+        # O que acompanha o e-mail analisado: consultas de dominio, Diamond,
+        # piramide, grafo e, quando pedidos, regra YARA e resumo por IA.
+        self._email_extra: dict[str, Any] = {}
 
         self._executor = ExecutorDeAnalise(self)
         self._executor.progresso.connect(self._ao_progredir)
@@ -656,6 +659,7 @@ class Ponte(QObject):
     def definir_email(self, caminho: Path) -> None:
         self._email = caminho
         self._resultado_email = None
+        self._email_extra = {}
         self.emailSelecionado.emit(para_json({"ok": True, "nome": caminho.name, "caminho": str(caminho)}))
 
     @Slot()
@@ -679,10 +683,12 @@ class Ponte(QObject):
 
         def analisar():
             from core.analise_email import analisar_email
+            from core.diamante import diamante_do_email
             from core.dominios import e_webmail, registravel
+            from core.grafo import grafo_do_email
+            from core.piramide import piramide_do_email
 
             resultado = analisar_email(caminho)
-            self._resultado_email = resultado
             dados = resultado.to_dict()
             dados["nome"] = caminho.name
             dados["dominios"] = []
@@ -692,6 +698,7 @@ class Ponte(QObject):
                 alvos: list[str] = []
                 candidatos = [i.dominio for i in resultado.identidades if i.campo != "Message-ID"]
                 candidatos += [l.dominio for l in resultado.links if l.tipo in ("http", "encurtador")]
+                candidatos += [urlparse(u).hostname or "" for u in resultado.imagens_remotas]
                 for d in candidatos:
                     base = registravel(d) if d else ""
                     if base and not e_webmail(base) and base not in alvos:
@@ -699,12 +706,113 @@ class Ponte(QObject):
                 for alvo in alvos[:6]:
                     self.andamentoTarefa.emit(para_json({"id": "email", "mensagem": f"Consultando {alvo}…"}))
                     try:
-                        dados["dominios"].append(consultar_dominio(alvo, certificados=False).to_dict())
+                        dados["dominios"].append(consultar_dominio(alvo, certificados=True).to_dict())
                     except ValueError:
                         continue
+            diamante = diamante_do_email(resultado, dados["dominios"])
+            piramide = piramide_do_email(resultado, diamante)
+            grafo = grafo_do_email(resultado, diamante, dados["dominios"])
+            dados["diamante"] = diamante.to_dict()
+            dados["piramide"] = piramide.to_dict()
+            dados["grafo"] = grafo.to_dict()
+            # So vira o resultado corrente quando tudo deu certo: um PDF de
+            # analise pela metade seria pior que nenhum.
+            self._resultado_email = resultado
+            self._email_extra = {"consultas": dados["dominios"], "diamante": diamante,
+                                 "piramide": piramide, "grafo": grafo}
             return dados
 
         self._em_segundo_plano("email", analisar)
+
+    @Slot(result=str)
+    def gerarYaraEmail(self) -> str:
+        if self._resultado_email is None:
+            return _erro("nenhum e-mail analisado")
+        from core.yara_email import gerar_regra_email
+
+        regra = gerar_regra_email(self._resultado_email)
+        self._email_extra["regra"] = regra
+        dados = regra.to_dict()
+        dados["valida"] = regra.valida and not regra.falsos_positivos
+        return para_json({"ok": True, "regra": dados})
+
+    @Slot(result=str)
+    def salvarYaraEmail(self) -> str:
+        regra = self._email_extra.get("regra")
+        if regra is None or not regra.texto:
+            return _erro("gere a regra primeiro")
+        caminho, _ = QFileDialog.getSaveFileName(self._janela, "Salvar regra YARA", f"{regra.nome}.yar", "YARA (*.yar)")
+        if not caminho:
+            return para_json({"ok": False, "cancelado": True})
+        Path(caminho).write_text(regra.texto, encoding="utf-8")
+        self._gravados.add(str(Path(caminho).resolve()))
+        return para_json({"ok": True, "caminho": caminho})
+
+    @Slot(str)
+    def resumirEmailComIA(self, modelo: str) -> None:
+        """Resumo executivo pela IA local, conferido. Roda em segundo plano."""
+        if self._resultado_email is None:
+            self.tarefaConcluida.emit(para_json({"id": "ia_email", "ok": False, "erro": "nenhum e-mail analisado"}))
+            return
+        resultado = self._resultado_email
+        extra = dict(self._email_extra)
+
+        def andamento(estado) -> None:
+            self.andamentoTarefa.emit(para_json({"id": "ia_email", "mensagem": estado.resumo()}))
+
+        def gerar():
+            from core.ia_email import gerar_resumo_email
+
+            resumo = gerar_resumo_email(resultado, extra.get("diamante"), extra.get("consultas"),
+                                        modelo=modelo or MODELO_PADRAO, progresso=andamento)
+            if resultado is self._resultado_email:
+                self._email_extra["resumo"] = resumo
+            dados = resumo.to_dict()
+            dados["confiavel"] = resumo.confiavel
+            dados["ressalva"] = resumo.ressalva
+            return dados
+
+        self._em_segundo_plano("ia_email", gerar)
+
+    @Slot(result=str)
+    def salvarPdfEmail(self) -> str:
+        if self._resultado_email is None:
+            return _erro("nenhum e-mail analisado")
+        from core.yara_email import gerar_regra_email
+        from reports.relatorio_executivo import ErroRelatorioExecutivo, salvar_pdf_email
+
+        r = self._resultado_email
+        extra = self._email_extra
+        sugestao = f"{Path(r.caminho).stem}_{r.sha256[:8]}_executivo.pdf"
+        caminho, _ = QFileDialog.getSaveFileName(self._janela, "Salvar relatório executivo", sugestao, "PDF (*.pdf)")
+        if not caminho:
+            return para_json({"ok": False, "cancelado": True})
+        if "regra" not in extra:
+            extra["regra"] = gerar_regra_email(r)
+        try:
+            salvar_pdf_email(r, caminho, extra.get("diamante"), extra.get("piramide"), extra.get("grafo"),
+                             extra.get("resumo"), extra.get("regra"), extra.get("consultas"))
+        except (ErroRelatorioExecutivo, OSError) as erro:
+            return _erro(str(erro))
+        self._gravados.add(str(Path(caminho).resolve()))
+        return para_json({"ok": True, "caminho": caminho, "com_ia": "resumo" in extra})
+
+    @Slot(result=str)
+    def exportarNavigatorEmail(self) -> str:
+        diamante = self._email_extra.get("diamante")
+        if self._resultado_email is None or diamante is None:
+            return _erro("nenhum e-mail analisado")
+        from reports.navigator import salvar_layer
+
+        r = self._resultado_email
+        caminho, _ = QFileDialog.getSaveFileName(
+            self._janela, "Salvar layer do ATT&CK Navigator", f"{Path(r.caminho).stem}_navigator.json", "JSON (*.json)"
+        )
+        if not caminho:
+            return para_json({"ok": False, "cancelado": True})
+        salvar_layer(f"E-mail: {r.assunto[:60]}", diamante.ttps, caminho, f"Técnicas observadas em {Path(r.caminho).name}.")
+        self._gravados.add(str(Path(caminho).resolve()))
+        return para_json({"ok": True, "caminho": caminho})
 
     @Slot(str, result=str)
     def exportarIndicadoresEmail(self, confianca_minima: str) -> str:
