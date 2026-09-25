@@ -307,3 +307,63 @@ def test_otx_validacao_evita_falso_positivo():
 def test_otx_desconhecido():
     c, _ = _otx({}, encontrado=False)
     assert c.consultar("x.top").veredito == "sem_registro"
+
+
+# ============================================================
+# URLScan
+# ============================================================
+
+
+def _urlscan(respostas):
+    from enrichment.urlscan_client import URLScanClient
+
+    c = URLScanClient("chave")
+    pedidos = []
+    fila = list(respostas)
+
+    def falso(caminho, **kw):
+        pedidos.append((caminho, kw))
+        dados, encontrado = fila.pop(0)
+        return RespostaEnriquecimento(consultado=True, encontrado=encontrado, dados=dados)
+
+    c._requisitar = falso
+    return c, pedidos
+
+
+def test_urlscan_busca_da_contexto_e_separa_quem_carrega():
+    resultados = [
+        {"task": {"domain": "golpe.top", "apexDomain": "golpe.top", "time": "2026-09-01T10:00:00Z", "uuid": "u1"},
+         "page": {"domain": "ww7.golpe.top", "title": "Parked", "ip": "1.2.3.4", "asnname": "AMAZON-02, US", "country": "US"}},
+        {"task": {"domain": "loja-invadida.com", "apexDomain": "loja-invadida.com", "time": "2026-09-02T10:00:00Z"}, "page": {}},
+    ]
+    c, pedidos = _urlscan([({"total": 2, "results": resultados}, True)])
+    r = c.consultar("golpe.top")
+    assert pedidos[0][1]["parametros"]["q"] == "domain:golpe.top"
+    assert r.veredito == "contexto"
+    assert "redireciona para ww7.golpe.top" in r.resumo
+    assert "(AMAZON-02, US)" in r.resumo  # sem repetir o pais
+    assert r.detalhes["sites_que_carregam"] == ["loja-invadida.com"]
+
+
+def test_urlscan_tag_maliciosa_e_sem_registro():
+    c, _ = _urlscan([({"total": 1, "results": [{"task": {"domain": "x.top", "tags": ["ClickFix", "threatfox"]}, "page": {}}]}, True)])
+    assert c.consultar("x.top").veredito == "malicioso"
+    c, pedidos = _urlscan([({"total": 0, "results": []}, True)])
+    assert c.consultar("https://x.top/a").veredito == "sem_registro"
+    assert pedidos[0][1]["parametros"]["q"] == 'page.url:"https://x.top/a"'
+
+
+def test_urlscan_varredura_ativa(monkeypatch):
+    from enrichment import urlscan_client
+
+    monkeypatch.setattr(urlscan_client, "ESPERA_DA_VARREDURA", 0)
+    resultado = {"verdicts": {"overall": {"malicious": True, "score": 100, "categories": ["phishing"], "brands": [{"name": "Microsoft"}]}},
+                 "page": {"url": "https://x.top/login", "ip": "1.2.3.4", "asnname": "X", "country": "RU", "title": "Entrar"},
+                 "lists": {"domains": ["x.top", "cdn.x.top"]}}
+    c, pedidos = _urlscan([({"uuid": "u9", "result": "https://urlscan.io/result/u9/"}, True), ({}, False), (resultado, True)])
+    r = c.varrer("https://x.top/login")
+    assert pedidos[0][0] == "/scan/" and pedidos[0][1]["corpo_json"] == {"url": "https://x.top/login", "visibility": "unlisted"}
+    assert r.veredito == "malicioso"
+    assert "imita: Microsoft" in r.resumo
+    assert r.detalhes["dominios_contatados"] == ["x.top", "cdn.x.top"]
+    assert r.referencia == "https://urlscan.io/result/u9/"

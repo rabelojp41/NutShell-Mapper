@@ -823,6 +823,39 @@ class Ponte(QObject):
             "_objetos": {"diamante": diamante, "grafo": grafo, "piramide": piramide},
         }
 
+    @Slot(str)
+    def varrerNoUrlscan(self, url: str) -> None:
+        """
+        Varredura ATIVA de um link do e-mail pelo URLScan. A pagina confirma
+        com o analista antes de chamar; aqui so se aceita URL que esta no
+        e-mail analisado - a ponte nunca manda o URLScan visitar um endereco
+        qualquer vindo do JavaScript.
+        """
+        r = self._resultado_email
+        permitidas = set()
+        if r is not None:
+            permitidas = {l.destino for l in r.links if l.tipo in ("http", "ip", "encurtador")} | set(r.imagens_remotas)
+        if url not in permitidas:
+            self.tarefaConcluida.emit(para_json({"id": "urlscan", "ok": False, "erro": "a URL não está no e-mail analisado"}))
+            return
+        from enrichment import urlscan_client
+
+        cliente = urlscan_client.criar()
+        if cliente is None:
+            self.tarefaConcluida.emit(para_json({"id": "urlscan", "ok": False, "erro": "URLSCAN_API_KEY não configurada em config/.env"}))
+            return
+
+        def varrer():
+            try:
+                resultado = cliente.varrer(url).to_dict()
+            finally:
+                cliente.fechar()
+            if r is self._resultado_email:
+                self._email_extra.setdefault("reputacao", []).append(resultado)
+            return resultado
+
+        self._em_segundo_plano("urlscan", varrer)
+
     @Slot(result=str)
     def gerarYaraEmail(self) -> str:
         if self._resultado_email is None:

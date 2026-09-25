@@ -2017,7 +2017,11 @@ function resultadoDoEmail(d) {
       h("thead", {}, h("tr", {}, h("th", {}, "Tipo"), h("th", {}, "Destino"), h("th", {}, "Texto exibido"))),
       h("tbody", {}, d.links.map((l) => h("tr", {},
         h("td", { class: "estreita" }, h("span", { class: `etiqueta ${l.observacoes.length ? "media" : ""}` }, l.tipo)),
-        h("td", { class: "quebra" }, valorCopiavel(defang(l.destino)), l.observacoes.map((o) => h("div", { class: "t3", style: "font-size:12px" }, o))),
+        h("td", { class: "quebra" }, valorCopiavel(defang(l.destino)), l.observacoes.map((o) => h("div", { class: "t3", style: "font-size:12px" }, o)),
+          ["http", "ip", "encurtador"].includes(l.tipo) && estado.ambiente?.fontes_de_reputacao?.includes("URLScan")
+            ? h("button", { class: "btn btn-pequeno", style: "margin-top:6px", disabled: estado.email.varrendo === l.destino, onclick: () => varrerNoUrlscan(l.destino) },
+                icone("busca"), estado.email.varrendo === l.destino ? "Varrendo… (até 1 min)" : "Varrer no URLScan")
+            : null),
         h("td", { class: "t2" }, l.texto || "—")))))),
   );
 
@@ -2074,7 +2078,8 @@ function resultadoDoEmail(d) {
 }
 
 const VEREDITO_REPUTACAO = {
-  malicioso: ["Malicioso", "alta"], suspeito: ["Suspeito", "media"], sem_registro: ["Sem registro", ""], erro: ["Falhou", ""],
+  malicioso: ["Malicioso", "alta"], suspeito: ["Suspeito", "media"], contexto: ["Contexto", "acento"],
+  sem_registro: ["Sem registro", ""], erro: ["Falhou", ""],
 };
 
 function blocoReputacao(lista) {
@@ -2096,11 +2101,40 @@ function blocoReputacao(lista) {
           h("td", { class: "quebra" }, valorCopiavel(defang(x.indicador))),
           h("td", { class: "estreita" }, h("span", { class: `etiqueta ${classe}` }, rotulo)),
           h("td", {}, x.resumo || x.erro, x.tags?.length ? h("div", { class: "etiquetas", style: "margin-top:4px" }, x.tags.slice(0, 8).map((t) => h("span", { class: "etiqueta mono" }, t))) : null,
-            x.referencia && x.encontrado ? h("div", { style: "margin-top:4px" }, linkExterno(x.referencia, `ver no ${x.fonte}`)) : null));
+            x.referencia && (x.encontrado || x.veredito === "contexto") ? h("div", { style: "margin-top:4px" }, linkExterno(x.referencia, `ver no ${x.fonte}`)) : null));
       })))),
     h("div", { class: "painel-rodape t3", style: "font-size:12px" }, "“Sem registro” não é “limpo”: infraestrutura de phishing costuma viver dias e nunca chegar a base nenhuma."),
   );
 }
+
+async function varrerNoUrlscan(url) {
+  const ok = await confirmar({
+    titulo: "Visitar este link pelo URLScan?",
+    tipo: "perigo",
+    perigo: true,
+    paragrafos: [
+      "O URLScan vai acessar a URL agora, pela infraestrutura dele: o seu IP não aparece para o atacante.",
+      "Mas a visita acontece. Link de phishing costuma ser único por vítima e pode ser “queimado”, e o kit pode registrar que foi analisado.",
+      "A varredura é feita como não listada (unlisted): não aparece na busca pública do URLScan.",
+    ],
+    botao: "Varrer agora",
+  });
+  if (!ok) return;
+  estado.email.varrendo = url;
+  renderizar();
+  ponte.varrerNoUrlscan(url);
+}
+
+tarefas.urlscan = (t) => {
+  estado.email.varrendo = null;
+  if (!t.ok) {
+    avisar("erro", "Varredura não feita", t.erro || "");
+  } else if (estado.email.dados) {
+    estado.email.dados.reputacao = [t.dados, ...(estado.email.dados.reputacao || [])];
+    avisar(t.dados.veredito === "malicioso" ? "erro" : "ok", "Varredura do URLScan concluída", t.dados.resumo || "");
+  }
+  if (estado.vista === "email") renderizar();
+};
 
 function analisarEmail() {
   const e = estado.email;

@@ -491,10 +491,10 @@ def _grafo_com_contribuicoes(r, diamante, consultas, contribuicoes):
 def _imprimir_reputacao(reputacao) -> None:
     from core.dominios import defang
 
-    rotulos = {"malicioso": "MALICIOSO", "suspeito": "suspeito", "sem_registro": "sem registro", "erro": "falhou"}
+    rotulos = {"malicioso": "MALICIOSO", "suspeito": "suspeito", "contexto": "contexto", "sem_registro": "sem registro", "erro": "falhou"}
     for x in reputacao:
         print(f"  [{rotulos.get(x.veredito, x.veredito):12}] {x.fonte:10} {defang(x.indicador)[:60]}")
-        if x.veredito in ("malicioso", "suspeito"):
+        if x.veredito in ("malicioso", "suspeito", "contexto"):
             print(f"  {'':27}{x.resumo}")
             if x.tags:
                 print(f"  {'':27}tags: {', '.join(x.tags[:8])}")
@@ -614,6 +614,28 @@ def comando_email(args: argparse.Namespace) -> int:
             print(f"  Consultando {len(indicadores)} indicador(es) do atacante. Só o indicador sai daqui.\n")
             reputacao = consultar_reputacao(indicadores)
             _imprimir_reputacao(reputacao)
+
+    if args.varrer_urlscan:
+        from enrichment import urlscan_client
+
+        cliente = urlscan_client.criar()
+        urls = [l.destino for l in r.links if l.tipo in ("http", "ip", "encurtador")][:3]
+        _secao("Varredura ativa no URLScan")
+        if cliente is None:
+            print("  URLSCAN_API_KEY não configurada: varredura não feita.")
+        elif not urls:
+            print("  O e-mail não tem link HTTP para varrer.")
+        else:
+            print("  ATENÇÃO: o URLScan vai VISITAR estes links agora, pela infraestrutura dele (o seu IP não")
+            print("  aparece). Link único por vítima pode ser queimado. Varredura não listada (unlisted).\n")
+            for url in urls:
+                print(f"  varrendo {defang(url)[:80]} ... (até 1 min)")
+                resultado = cliente.varrer(url)
+                reputacao = list(reputacao) + [resultado]
+                print(f"    {resultado.veredito}: {resultado.resumo or resultado.erro}")
+                if resultado.referencia:
+                    print(f"    {resultado.referencia}")
+            cliente.fechar()
 
     diamante = diamante_do_email(r, consultas, reputacao)
 
@@ -1012,6 +1034,10 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="salva o resultado completo em JSON")
     p.add_argument("--yara", action="store_true", help="gera e valida uma regra YARA da campanha")
     p.add_argument("--ia", action="store_true", help="resumo executivo pela IA local (Ollama), conferido contra os achados")
+    p.add_argument(
+        "--varrer-urlscan", action="store_true",
+        help="ATIVO: pede ao URLScan que visite os links do e-mail (até 3), pela infraestrutura dele; o link pode ser queimado",
+    )
     p.add_argument("--modelo-ia", default=MODELO_PADRAO, help=f"modelo do Ollama (padrao: {MODELO_PADRAO})")
     p.add_argument("--pdf", action="store_true", help="relatório executivo em PDF (Diamond, TTPs, pirâmide, grafo, YARA)")
     p.add_argument("--navigator", action="store_true", help="exporta a layer do ATT&CK Navigator")

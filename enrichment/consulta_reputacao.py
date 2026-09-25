@@ -34,13 +34,14 @@ class Fonte:
 
 def fontes_disponiveis() -> list[Fonte]:
     """As fontes, na ordem em que aparecem. Criar devolve None sem chave."""
-    from enrichment import abusech_client, abuseipdb_client, otx_client
+    from enrichment import abusech_client, abuseipdb_client, otx_client, urlscan_client
 
     return [
         Fonte("URLhaus", frozenset({"ip", "dominio", "url"}), abusech_client.criar_urlhaus),
         Fonte("ThreatFox", frozenset({"ip", "dominio", "url", "hash"}), abusech_client.criar_threatfox),
         Fonte("AbuseIPDB", frozenset({"ip"}), abuseipdb_client.criar),
         Fonte("OTX", frozenset({"ip", "dominio", "url", "hash"}), otx_client.criar),
+        Fonte("URLScan", frozenset({"ip", "dominio", "url", "hash"}), urlscan_client.criar),
     ]
 
 
@@ -130,7 +131,7 @@ def consultar_reputacao(
         fechar = getattr(cliente, "fechar", None)
         if fechar:
             fechar()
-    ordem = {"malicioso": 0, "suspeito": 1, "sem_registro": 2, "erro": 3}
+    ordem = {"malicioso": 0, "suspeito": 1, "contexto": 2, "sem_registro": 3, "erro": 4}
     resultados.sort(key=lambda x: (ordem.get(x.veredito, 9), x.indicador, x.fonte))
     return resultados
 

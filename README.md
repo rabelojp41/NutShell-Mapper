@@ -70,6 +70,7 @@ e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
 | `enrichment/abusech_client.py` | URLhaus (distribuicao de malware) e ThreatFox (IOCs com familia e confianca) |
 | `enrichment/abuseipdb_client.py` | reputacao de IP por relatos da comunidade, com provedor, pais e tipo de uso |
 | `enrichment/otx_client.py` | pulses do OTX AlienVault que citam o indicador |
+| `enrichment/urlscan_client.py` | busca de varreduras no URLScan.io e varredura ativa opcional |
 | `enrichment/consulta_reputacao.py` | pergunta a cada fonte de reputacao configurada o que ela sabe consultar, em paralelo |
 | `enrichment/consulta_dominio.py` | DNS, RDAP, certificados (Certificate Transparency) e subdominios, tudo passivo |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
@@ -382,7 +383,16 @@ hashes de anexo) e consultada em todas as fontes configuradas: URLhaus e
 ThreatFox (mesma chave do abuse.ch), AbuseIPDB (IPs: pontuacao de abuso,
 relatos por categoria e, mesmo sem relato, quem hospeda o IP) e OTX
 AlienVault (pulses que citam o indicador, com adversario, familia, tecnicas
-ATT&CK e a validacao que evita falso positivo em dominio conhecido). Cada resultado vem como
+ATT&CK e a validacao que evita falso positivo em dominio conhecido) e
+URLScan.io (varreduras que outras pessoas ja fizeram: a pagina que respondeu,
+provedor, redirecionamento e os outros sites que carregam recursos do
+dominio - no ClickFix, os sites comprometidos que injetam o script).
+
+**Varredura ativa, opcional** (`--varrer-urlscan`, ou o botao em cada link
+na interface, com confirmacao): o URLScan visita o link agora, pela
+infraestrutura dele - o seu IP nao aparece para o atacante, mas a visita
+acontece e um link unico por vitima pode ser queimado. Feita como "unlisted".
+A ponte so aceita varrer URL que esta no e-mail analisado. Cada resultado vem como
 malicioso, suspeito, sem registro ou falha - "sem registro" nao e "limpo":
 infraestrutura de phishing costuma viver dias e nunca chegar a base
 nenhuma. O que as bases dizem entra no Diamond, no PDF e no contexto da IA;

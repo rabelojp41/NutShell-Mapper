@@ -610,3 +610,11 @@ def test_soltar_eml_leva_para_a_tela_de_email(janela, tmp_path):
     assert _js(janela, "estado.email.arquivo.nome") == "golpe.eml"
     # O artefato de analise estatica nao foi trocado por um e-mail.
     assert janela.ponte._arquivo != eml
+
+
+def test_urlscan_so_varre_link_do_email(ponte):
+    """A varredura ativa visita a URL: a ponte nao aceita endereco que nao veio do e-mail."""
+    respostas = []
+    ponte.tarefaConcluida.connect(respostas.append)
+    ponte.varrerNoUrlscan("https://qualquer-coisa.example/")
+    assert json.loads(respostas[0]) == {"id": "urlscan", "ok": False, "erro": "a URL não está no e-mail analisado"}

@@ -5,10 +5,12 @@ Cada fonte (URLhaus, ThreatFox, AbuseIPDB, OTX, URLScan, Censys...) fala a
 propria lingua. Aqui todas viram a mesma coisa, para a interface e o
 relatorio mostrarem lado a lado sem saber de onde veio cada campo.
 
-O veredito separa quatro situacoes que costumam ser confundidas:
+O veredito separa cinco situacoes que costumam ser confundidas:
 
   - "malicioso"   : a fonte registra o indicador como malicioso
   - "suspeito"    : ha registro, mas fraco (poucos relatos, confianca baixa)
+  - "contexto"    : a fonte conhece o indicador e traz informacao, sem
+                    julga-lo (ex.: varreduras do URLScan, hospedagem)
   - "sem_registro": a fonte respondeu e nao conhece o indicador
   - "erro"        : nao foi possivel perguntar (rede, chave, cota)
 
@@ -21,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-VEREDITOS = ("malicioso", "suspeito", "sem_registro", "erro")
+VEREDITOS = ("malicioso", "suspeito", "contexto", "sem_registro", "erro")
 
 
 @dataclass

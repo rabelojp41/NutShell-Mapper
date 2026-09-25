@@ -480,7 +480,7 @@ def salvar_pdf_email(
 
     if reputacao:
         itens = [x if isinstance(x, dict) else x.to_dict() for x in reputacao]
-        rotulo = {"malicioso": "Malicioso", "suspeito": "Suspeito", "sem_registro": "Sem registro", "erro": "Falhou"}
+        rotulo = {"malicioso": "Malicioso", "suspeito": "Suspeito", "contexto": "Contexto", "sem_registro": "Sem registro", "erro": "Falhou"}
         el.append(Spacer(1, 8))
         el.append(Paragraph("Reputação em bases de inteligência", s_cel_n))
         linhas = [["Fonte", "Indicador", "Veredito", "O que a fonte diz"]]
