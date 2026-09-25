@@ -72,6 +72,7 @@ e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
 | `enrichment/otx_client.py` | pulses do OTX AlienVault que citam o indicador |
 | `enrichment/urlscan_client.py` | busca de varreduras no URLScan.io e varredura ativa opcional |
 | `enrichment/censys_client.py` | servicos expostos, sistema autonomo, DNS reverso e contato de abuso de um IP |
+| `enrichment/hibp_client.py` | catalogo de vazamentos por dominio (gratuito) e contas do atacante (com chave) |
 | `enrichment/consulta_reputacao.py` | pergunta a cada fonte de reputacao configurada o que ela sabe consultar, em paralelo |
 | `enrichment/consulta_dominio.py` | DNS, RDAP, certificados (Certificate Transparency) e subdominios, tudo passivo |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
@@ -393,6 +394,11 @@ Para hashes (anexos do e-mail, artefato analisado), tambem o **MalwareBazaar**
 (familia, metodo de entrega) e o **YARAify** (regras YARA da comunidade e
 assinaturas do ClamAV que ja casaram com o arquivo - a segunda opiniao sobre
 a regra que a ferramenta gera).
+
+O **HaveIBeenPwned** entra pelo catalogo gratuito: se o site de um dominio -
+inclusive o da organizacao que recebeu o e-mail - ja foi origem de
+vazamento, com nome, data, contas e tipos de dado. Com a chave paga, tambem
+as contas de e-mail do atacante. Senha ou registro de pessoa nunca.
 
 O **Censys** completa o retrato do IP: servicos expostos (porta, protocolo,
 software, certificado), sistema autonomo, localizacao, DNS reverso e o

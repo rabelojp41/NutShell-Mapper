@@ -34,7 +34,11 @@ class Fonte:
 
 def fontes_disponiveis() -> list[Fonte]:
     """As fontes, na ordem em que aparecem. Criar devolve None sem chave."""
-    from enrichment import abusech_client, abuseipdb_client, censys_client, otx_client, urlscan_client
+    from config.settings import CONFIG
+    from enrichment import abusech_client, abuseipdb_client, censys_client, hibp_client, otx_client, urlscan_client
+
+    # Sem chave, o HIBP so tem o catalogo por dominio; com ela, tambem conta de e-mail.
+    tipos_hibp = {"dominio", "organizacao"} | ({"email"} if CONFIG.hibp_api_key else set())
 
     return [
         Fonte("URLhaus", frozenset({"ip", "dominio", "url"}), abusech_client.criar_urlhaus),
@@ -45,6 +49,7 @@ def fontes_disponiveis() -> list[Fonte]:
         Fonte("OTX", frozenset({"ip", "dominio", "url", "hash"}), otx_client.criar),
         Fonte("URLScan", frozenset({"ip", "dominio", "url", "hash"}), urlscan_client.criar),
         Fonte("Censys", frozenset({"ip"}), censys_client.criar),
+        Fonte("HIBP", frozenset(tipos_hibp), hibp_client.criar),
     ]
 
 
@@ -77,7 +82,22 @@ def indicadores_do_email(r: Any, diamante: Any = None) -> list[tuple[str, str]]:
         add(url, "url")
     for anexo in r.anexos:
         add(anexo.sha256, "hash")
-    return saida[:MAXIMO_DE_INDICADORES]
+    saida = saida[:MAXIMO_DE_INDICADORES]
+    # Contas do atacante: so a fonte de vazamentos (com chave) as consulta.
+    for i in r.identidades:
+        if i.campo in ("Reply-To", "From") and "@" in i.endereco:
+            add(i.endereco, "email")
+    # O dominio de quem RECEBEU, para o catalogo de vazamentos: senha de
+    # vazamento antigo da propria organizacao e materia-prima de golpe.
+    for nome, valor in r.cabecalhos:
+        if nome.lower() == "to":
+            for pedaco in valor.replace(",", " ").split():
+                pedaco = pedaco.strip("<>;\"'")
+                if "@" in pedaco:
+                    dominio = dominios.registravel(pedaco.rsplit("@", 1)[-1])
+                    if "." in dominio and not dominios.e_webmail(dominio):
+                        add(dominio, "organizacao")
+    return saida
 
 
 def indicadores_do_artefato(r: Any) -> list[tuple[str, str]]:

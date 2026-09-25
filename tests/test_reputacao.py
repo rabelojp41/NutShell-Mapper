@@ -149,8 +149,9 @@ def test_indicadores_do_email(tmp_path):
     assert ("45.13.7.9", "ip") in ind
     assert ("conta-segura.top", "dominio") in ind
     assert ("https://login.golpe.top/l", "url") in ind
-    # Webmail e endereco de e-mail nao vao para fonte de reputacao.
-    assert not any("gmail" in v for v, _ in ind)
+    # Webmail nao vira dominio a consultar; a conta do atacante vai so como e-mail.
+    assert not any("gmail" in v for v, t in ind if t != "email")
+    assert ("golpista@gmail.com", "email") in ind
 
 
 def test_ia_aceita_familia_vinda_da_reputacao(tmp_path):
@@ -474,3 +475,50 @@ def test_malwarebazaar_no_formato_de_reputacao():
     assert r.veredito == "malicioso" and r.detalhes["familias"] == ["Mirai"]
     assert "entregue por web_download" in r.resumo
     assert r.referencia == f"https://bazaar.abuse.ch/sample/{'c' * 64}/"
+
+
+# ============================================================
+# HIBP
+# ============================================================
+
+
+def test_hibp_catalogo_por_dominio_sem_chave():
+    from enrichment.hibp_client import HIBPClient
+
+    c = HIBPClient("")
+    pedidos = _respondendo(c, [{"Name": "Dropbox", "Title": "Dropbox", "BreachDate": "2012-07-01", "PwnCount": 68648009,
+                                "DataClasses": ["Email addresses", "Passwords"]}])
+    r = c.consultar("login.dropbox.com")
+    assert pedidos[0][0] == "/breaches" and pedidos[0][1]["parametros"] == {"domain": "dropbox.com"}
+    assert r.veredito == "contexto"
+    assert "Dropbox (2012-07, 68.648.009 contas)" in r.resumo
+    assert r.tags == ["Email addresses", "Passwords"]
+
+
+def test_hibp_email_so_com_chave():
+    from enrichment.hibp_client import HIBPClient
+
+    c = HIBPClient("")
+    pedidos = _respondendo(c, [])
+    assert c.consultar("x@gmail.com").veredito == "erro" and pedidos == []
+    c = HIBPClient("chave-paga")
+    pedidos = _respondendo(c, [{"Name": "Canva", "Title": "Canva", "BreachDate": "2019-05-24", "DataClasses": ["Email addresses"]}])
+    r = c.consultar("x@gmail.com")
+    assert pedidos[0][0] == "/breachedaccount/x%40gmail.com"
+    assert r.veredito == "contexto" and r.detalhes["vazamentos"] == ["Canva"]
+
+
+def test_email_e_organizacao_so_vao_para_quem_entende(tmp_path):
+    from core.analise_email import analisar_email
+
+    eml = tmp_path / "g.eml"
+    eml.write_bytes(b"From: X <a@golpe.top>\r\nTo: fulano@empresa.com.br\r\nReply-To: b@gmail.com\r\nSubject: s\r\n\r\nx")
+    ind = indicadores_do_email(analisar_email(eml))
+    assert ("b@gmail.com", "email") in ind
+    assert ("empresa.com.br", "organizacao") in ind
+    so_dominio = _Falso("SoDominio")
+    hibp = _Falso("HIBP")
+    r = consultar_reputacao(ind, [Fonte("SoDominio", frozenset({"dominio"}), lambda: so_dominio),
+                                  Fonte("HIBP", frozenset({"dominio", "organizacao"}), lambda: hibp)])
+    assert "empresa.com.br" not in so_dominio.vistos and "b@gmail.com" not in so_dominio.vistos
+    assert "empresa.com.br" in hibp.vistos and "b@gmail.com" not in hibp.vistos
