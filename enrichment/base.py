@@ -177,6 +177,7 @@ class ClienteBase:
         metodo: str = "GET",
         formulario: dict | None = None,
         bruto: bool = False,
+        corpo_json: dict | None = None,
     ) -> RespostaEnriquecimento:
         """
         Faz uma requisicao com limite de taxa e repeticao.
@@ -188,6 +189,7 @@ class ClienteBase:
             bruto: quando True, guarda o corpo em `conteudo` sem tentar
                 interpretar como JSON. Usado no download de amostra, que
                 devolve um ZIP.
+            corpo_json: corpo JSON, para POST. O ThreatFox so aceita assim.
 
         Nunca levanta excecao de rede: devolve RespostaEnriquecimento com o
         erro ja sanitizado.
@@ -210,6 +212,7 @@ class ClienteBase:
                         url,
                         params=parametros,
                         data=formulario,
+                        json=corpo_json,
                         headers=cabecalhos,
                         timeout=self.timeout,
                     )

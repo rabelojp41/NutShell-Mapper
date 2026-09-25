@@ -260,6 +260,7 @@ def salvar_pdf_email(
     resumo_ia: Any = None,
     regra_yara: Any = None,
     consultas: list | None = None,
+    reputacao: list | None = None,
 ) -> Path:
     try:
         from reportlab.lib import colors
@@ -446,6 +447,19 @@ def salvar_pdf_email(
         linhas.append([i.tipo.value, dominios.defang(i.valor), i.origem, i.confianca.value])
     el.append(Paragraph("Indicadores", s_cel_n))
     el.append(tabela(linhas, [largura * 0.1, largura * 0.5, largura * 0.28, largura * 0.12]))
+
+    if reputacao:
+        itens = [x if isinstance(x, dict) else x.to_dict() for x in reputacao]
+        rotulo = {"malicioso": "Malicioso", "suspeito": "Suspeito", "sem_registro": "Sem registro", "erro": "Falhou"}
+        el.append(Spacer(1, 8))
+        el.append(Paragraph("Reputação em bases de inteligência", s_cel_n))
+        linhas = [["Fonte", "Indicador", "Veredito", "O que a fonte diz"]]
+        for x in itens:
+            linhas.append([x["fonte"], dominios.defang(x["indicador"]), rotulo.get(x["veredito"], x["veredito"]),
+                           (x["resumo"] or x["erro"]) + (f" · tags: {', '.join(x['tags'][:6])}" if x.get("tags") else "")])
+        el.append(tabela(linhas, [largura * 0.13, largura * 0.33, largura * 0.13, largura * 0.41]))
+        el.append(Paragraph(limpo("“Sem registro” não é “limpo”: infraestrutura de phishing costuma viver dias e nunca "
+                                  "chegar a base nenhuma."), s_peq))
 
     for c in consultas or []:
         d = c if isinstance(c, dict) else c.to_dict()

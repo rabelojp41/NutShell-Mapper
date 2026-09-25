@@ -262,6 +262,7 @@ def _sem_rede_por_acidente(monkeypatch):
     dentro do teste vence este, que roda antes.
     """
     from enrichment import (
+        abusech_client,
         malwarebazaar_client,
         shodan_client,
         virustotal_client,
@@ -269,3 +270,7 @@ def _sem_rede_por_acidente(monkeypatch):
 
     for modulo in (virustotal_client, shodan_client, malwarebazaar_client):
         monkeypatch.setattr(modulo, "criar", lambda *_a, **_k: None)
+    # Fontes de reputacao: cada uma tem a propria fabrica.
+    for modulo, fabricas in ((abusech_client, ("criar_urlhaus", "criar_threatfox")),):
+        for fabrica in fabricas:
+            monkeypatch.setattr(modulo, fabrica, lambda *_a, **_k: None)

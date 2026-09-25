@@ -221,13 +221,33 @@ def _metodologia(r: Any) -> str:
     return "e-mail suspeito sem método de entrega definido"
 
 
-def diamante_do_email(r: Any, consultas: list[Any] | None = None) -> ModeloDiamante:
+def _reputacao_por_indicador(reputacao: list[Any] | None) -> dict[str, list[str]]:
+    """indicador (ou dominio registravel) -> ["URLhaus: malicioso", ...], so o que foi encontrado."""
+    saida: dict[str, list[str]] = {}
+    for x in reputacao or []:
+        d = x if isinstance(x, dict) else x.to_dict()
+        if d["veredito"] not in ("malicioso", "suspeito"):
+            continue
+        rotulo = f"{d['fonte']}: {d['veredito']}"
+        chaves = {d["indicador"].lower()}
+        if d["tipo"] in ("dominio", "url"):
+            host = urlsplit(d["indicador"]).hostname if d["tipo"] == "url" else d["indicador"]
+            if host:
+                chaves.add(dominios.registravel(host))
+        for chave in chaves:
+            if rotulo not in saida.setdefault(chave, []):
+                saida[chave].append(rotulo)
+    return saida
+
+
+def diamante_do_email(r: Any, consultas: list[Any] | None = None, reputacao: list[Any] | None = None) -> ModeloDiamante:
     ident = {}
     for i in r.identidades:
         if "@" in i.endereco and i.campo not in ident:
             ident[i.campo] = i
     marca = next((s.titulo.replace("Finge ser ", "") for s in r.sinais if s.codigo == "personificacao"), "")
     consultas_ = _consultas_por_dominio(consultas)
+    rep = _reputacao_por_indicador(reputacao)
 
     # --- Adversario ---
     adv = Vertice("Adversário", "O operador é desconhecido; o que se vê são as personas que ele controla.")
@@ -264,7 +284,8 @@ def diamante_do_email(r: Any, consultas: list[Any] | None = None) -> ModeloDiama
     inf = Vertice("Infraestrutura", "Tipo 1: controlada pelo adversário. Tipo 2: serviço legítimo usado por ele.")
     if r.origem is not None:
         helo = f" (HELO {r.origem.de})" if r.origem.de and r.origem.de != r.origem.ip else ""
-        inf.itens.append(ItemDiamante(r.origem.ip, f"servidor que disparou a mensagem{helo}", "tipo 1"))
+        extra = f" · {', '.join(rep[r.origem.ip.lower()])}" if r.origem.ip.lower() in rep else ""
+        inf.itens.append(ItemDiamante(r.origem.ip, f"servidor que disparou a mensagem{helo}{extra}", "tipo 1"))
     vistos: set[str] = set()
 
     def dominio(nome: str, descricao: str) -> None:
@@ -284,6 +305,7 @@ def diamante_do_email(r: Any, consultas: list[Any] | None = None) -> ModeloDiama
                 extra.append(f"certificado com {len(c['dominios_irmaos'])} domínio(s) irmão(s)")
             if any("não existe mais" in o for o in c.get("observacoes", [])):
                 extra.append("derrubado")
+        extra += rep.get(base, [])
         inf.itens.append(ItemDiamante(base, descricao + (f" · {', '.join(extra)}" if extra else ""), tipo))
 
     for campo, descricao in (("From", "domínio do remetente"), ("Return-Path", "domínio do envelope"),
@@ -356,6 +378,11 @@ def diamante_do_email(r: Any, consultas: list[Any] | None = None) -> ModeloDiama
     for base, c in consultas_.items():
         if c.get("dominios_irmaos"):
             pivos.append(Pivo("Infraestrutura", "Infraestrutura", f"Investigar os domínios no mesmo certificado de {base}: {', '.join(c['dominios_irmaos'][:5])}."))
+    familias = sorted({
+        f for x in reputacao or [] for f in ((x if isinstance(x, dict) else x.to_dict()).get("detalhes") or {}).get("familias", [])
+    })
+    if familias:
+        pivos.append(Pivo("Capacidade", "Adversário", f"Pesquisar {', '.join(familias[:3])} no Malpedia e no ThreatFox: outras campanhas e infraestrutura da mesma família."))
     remetente = ident.get("From")
     if remetente and not dominios.e_webmail(remetente.dominio):
         pivos.append(Pivo("Infraestrutura", "Infraestrutura", f"Buscar nos logs de certificados domínios com o mesmo padrão de nome de {remetente.dominio}."))

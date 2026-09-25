@@ -96,6 +96,13 @@ class Configuracoes:
     virustotal_api_key: str = field(default="", repr=False)
     shodan_api_key: str = field(default="", repr=False)
     malwarebazaar_api_key: str = field(default="", repr=False)
+    # A mesma Auth-Key do abuse.ch vale para URLhaus, ThreatFox e YARAify.
+    abuseipdb_api_key: str = field(default="", repr=False)
+    otx_api_key: str = field(default="", repr=False)
+    urlscan_api_key: str = field(default="", repr=False)
+    censys_api_token: str = field(default="", repr=False)
+    hibp_api_key: str = field(default="", repr=False)
+    intelx_api_key: str = field(default="", repr=False)
 
     # --- Limites de uso ---
     # O plano gratuito do VirusTotal permite 4 requisicoes por minuto.
@@ -136,6 +143,12 @@ class Configuracoes:
             "VirusTotal": _mascarar(self.virustotal_api_key),
             "Shodan": _mascarar(self.shodan_api_key),
             "MalwareBazaar": _mascarar(self.malwarebazaar_api_key),
+            "AbuseIPDB": _mascarar(self.abuseipdb_api_key),
+            "OTX AlienVault": _mascarar(self.otx_api_key),
+            "URLScan.io": _mascarar(self.urlscan_api_key),
+            "Censys": _mascarar(self.censys_api_token),
+            "HaveIBeenPwned": _mascarar(self.hibp_api_key),
+            "IntelX": _mascarar(self.intelx_api_key),
             "enriquecimento": "habilitado" if self.enable_enrichment else "desabilitado",
         }
 
@@ -193,6 +206,12 @@ def carregar(
         virustotal_api_key=_chave("VIRUSTOTAL_API_KEY"),
         shodan_api_key=_chave("SHODAN_API_KEY"),
         malwarebazaar_api_key=_chave("MALWAREBAZAAR_API_KEY"),
+        abuseipdb_api_key=_chave("ABUSEIPDB_API_KEY"),
+        otx_api_key=_chave("OTX_API_KEY"),
+        urlscan_api_key=_chave("URLSCAN_API_KEY"),
+        censys_api_token=_chave("CENSYS_API_TOKEN"),
+        hibp_api_key=_chave("HIBP_API_KEY"),
+        intelx_api_key=_chave("INTELX_API_KEY"),
         virustotal_rate_limit=_inteiro("VIRUSTOTAL_RATE_LIMIT", 4),
         http_timeout=_inteiro("HTTP_TIMEOUT", 30),
         enable_enrichment=_booleano("ENABLE_ENRICHMENT", True),

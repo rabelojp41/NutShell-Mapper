@@ -61,7 +61,18 @@ HOSTS_PERMITIDOS = frozenset(
         "nvd.nist.gov",
         "www.virustotal.com",
         "bazaar.abuse.ch",
+        "urlhaus.abuse.ch",
+        "threatfox.abuse.ch",
+        "yaraify.abuse.ch",
+        "malpedia.caad.fkie.fraunhofer.de",
         "www.shodan.io",
+        "www.abuseipdb.com",
+        "otx.alienvault.com",
+        "urlscan.io",
+        "platform.censys.io",
+        "haveibeenpwned.com",
+        "intelx.io",
+        "mitre-attack.github.io",
         "ollama.com",
     }
 )
@@ -274,6 +285,7 @@ class Ponte(QObject):
                 "formatos_de_artefato": list(FORMATOS_DE_ARTEFATO),
                 "formatos_de_relatorio": list(FORMATOS_DE_RELATORIO),
                 "modelo_padrao": MODELO_PADRAO,
+                "fontes_de_reputacao": _fontes_de_reputacao(),
                 "analisando": self._executor.rodando,
             }
         )
@@ -709,7 +721,18 @@ class Ponte(QObject):
                         dados["dominios"].append(consultar_dominio(alvo, certificados=True).to_dict())
                     except ValueError:
                         continue
-            diamante = diamante_do_email(resultado, dados["dominios"])
+            dados["reputacao"] = []
+            if online:
+                from enrichment.consulta_reputacao import consultar_reputacao, indicadores_do_email
+
+                def andamento(mensagem: str) -> None:
+                    self.andamentoTarefa.emit(para_json({"id": "email", "mensagem": f"Reputação · {mensagem}"}))
+
+                reputacao = consultar_reputacao(
+                    indicadores_do_email(resultado, diamante_do_email(resultado, dados["dominios"])), progresso=andamento
+                )
+                dados["reputacao"] = [x.to_dict() for x in reputacao]
+            diamante = diamante_do_email(resultado, dados["dominios"], dados["reputacao"])
             piramide = piramide_do_email(resultado, diamante)
             grafo = grafo_do_email(resultado, diamante, dados["dominios"])
             dados["diamante"] = diamante.to_dict()
@@ -718,7 +741,7 @@ class Ponte(QObject):
             # So vira o resultado corrente quando tudo deu certo: um PDF de
             # analise pela metade seria pior que nenhum.
             self._resultado_email = resultado
-            self._email_extra = {"consultas": dados["dominios"], "diamante": diamante,
+            self._email_extra = {"consultas": dados["dominios"], "reputacao": dados["reputacao"], "diamante": diamante,
                                  "piramide": piramide, "grafo": grafo}
             return dados
 
@@ -763,7 +786,7 @@ class Ponte(QObject):
         def gerar():
             from core.ia_email import gerar_resumo_email
 
-            resumo = gerar_resumo_email(resultado, extra.get("diamante"), extra.get("consultas"),
+            resumo = gerar_resumo_email(resultado, extra.get("diamante"), extra.get("consultas"), extra.get("reputacao"),
                                         modelo=modelo or MODELO_PADRAO, progresso=andamento)
             if resultado is self._resultado_email:
                 self._email_extra["resumo"] = resumo
@@ -791,7 +814,7 @@ class Ponte(QObject):
             extra["regra"] = gerar_regra_email(r)
         try:
             salvar_pdf_email(r, caminho, extra.get("diamante"), extra.get("piramide"), extra.get("grafo"),
-                             extra.get("resumo"), extra.get("regra"), extra.get("consultas"))
+                             extra.get("resumo"), extra.get("regra"), extra.get("consultas"), extra.get("reputacao"))
         except (ErroRelatorioExecutivo, OSError) as erro:
             return _erro(str(erro))
         self._gravados.add(str(Path(caminho).resolve()))
@@ -907,6 +930,15 @@ class Ponte(QObject):
         if self._executor.rodando:
             self._executor.cancelar()
         self.toca_discos.parar()
+
+
+def _fontes_de_reputacao() -> list[str]:
+    try:
+        from enrichment.consulta_reputacao import fontes_configuradas
+
+        return fontes_configuradas()
+    except Exception:
+        return []
 
 
 def _erro(mensagem: str) -> str:

@@ -476,6 +476,23 @@ def _imprimir_dominio(c) -> None:
         print(f"  (falhou) {erro}")
 
 
+def _imprimir_reputacao(reputacao) -> None:
+    from core.dominios import defang
+
+    rotulos = {"malicioso": "MALICIOSO", "suspeito": "suspeito", "sem_registro": "sem registro", "erro": "falhou"}
+    for x in reputacao:
+        print(f"  [{rotulos.get(x.veredito, x.veredito):12}] {x.fonte:10} {defang(x.indicador)[:60]}")
+        if x.veredito in ("malicioso", "suspeito"):
+            print(f"  {'':27}{x.resumo}")
+            if x.tags:
+                print(f"  {'':27}tags: {', '.join(x.tags[:8])}")
+        elif x.veredito == "erro":
+            print(f"  {'':27}{x.erro}")
+    encontrados = sum(1 for x in reputacao if x.encontrado)
+    print(f"\n  {encontrados} registro(s) em bases de inteligência. \"Sem registro\" não é \"limpo\": "
+          "infraestrutura de phishing costuma viver dias e nunca chegar a base nenhuma.")
+
+
 def comando_email(args: argparse.Namespace) -> int:
     import json
 
@@ -571,7 +588,19 @@ def comando_email(args: argparse.Namespace) -> int:
     from core.diamante import diamante_do_email
     from core.piramide import piramide_do_email
 
-    diamante = diamante_do_email(r, consultas)
+    reputacao = []
+    if args.online:
+        from enrichment.consulta_reputacao import consultar_reputacao, fontes_configuradas, indicadores_do_email
+
+        fontes = fontes_configuradas()
+        indicadores = indicadores_do_email(r, diamante_do_email(r, consultas))
+        if fontes and indicadores:
+            _secao(f"Reputação ({', '.join(fontes)})")
+            print(f"  Consultando {len(indicadores)} indicador(es) do atacante. Só o indicador sai daqui.\n")
+            reputacao = consultar_reputacao(indicadores)
+            _imprimir_reputacao(reputacao)
+
+    diamante = diamante_do_email(r, consultas, reputacao)
     piramide = piramide_do_email(r, diamante)
     _secao("Diamond Model")
     for vertice in (diamante.adversario, diamante.capacidade, diamante.infraestrutura, diamante.vitima):
@@ -623,7 +652,7 @@ def comando_email(args: argparse.Namespace) -> int:
 
         _secao(f"Resumo por IA ({args.modelo_ia}, local)")
         print("  Gerando... a primeira chamada carrega o modelo na GPU e pode levar um a dois minutos.")
-        resumo = gerar_resumo_email(r, diamante, consultas, modelo=args.modelo_ia)
+        resumo = gerar_resumo_email(r, diamante, consultas, reputacao, modelo=args.modelo_ia)
         if resumo.gerado:
             print()
             for linha in resumo.texto.splitlines():
@@ -650,7 +679,7 @@ def comando_email(args: argparse.Namespace) -> int:
         try:
             destino_pdf = salvar_pdf_email(
                 r, saida / f"{caminho.stem}_{r.sha256[:8]}_executivo.pdf", diamante, piramide,
-                grafo_do_email(r, diamante, consultas), resumo, regra, consultas,
+                grafo_do_email(r, diamante, consultas), resumo, regra, consultas, reputacao,
             )
             print(f"  Relatório executivo (PDF): {destino_pdf}")
         except ErroRelatorioExecutivo as erro:
@@ -659,6 +688,7 @@ def comando_email(args: argparse.Namespace) -> int:
         destino = saida / f"{caminho.stem}_{r.sha256[:8]}_email.json"
         dados = r.to_dict()
         dados["dominios"] = consultas
+        dados["reputacao"] = [x.to_dict() for x in reputacao]
         dados["diamante"] = diamante.to_dict()
         dados["piramide"] = piramide.to_dict()
         if resumo is not None:

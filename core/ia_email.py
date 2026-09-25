@@ -61,7 +61,7 @@ FORMATO (portugues do Brasil, no maximo 230 palavras, sem titulos, sem listas):
 """
 
 
-def _dados(r: Any, diamante: Any = None, consultas: list | None = None) -> dict:
+def _dados(r: Any, diamante: Any = None, consultas: list | None = None, reputacao: list | None = None) -> dict:
     visivel = r.texto_visivel[:TRECHO_MAXIMO]
     dados = {
         "veredito": r.veredito,
@@ -90,12 +90,19 @@ def _dados(r: Any, diamante: Any = None, consultas: list | None = None) -> dict:
             {"dominio": c.get("registravel"), "idade_dias": c.get("idade_dias"), "observacoes": c.get("observacoes", [])}
             for c in (x if isinstance(x, dict) else x.to_dict() for x in consultas)
         ]
+    if reputacao:
+        itens = [x if isinstance(x, dict) else x.to_dict() for x in reputacao]
+        dados["reputacao_em_bases_de_inteligencia"] = [
+            {"fonte": x["fonte"], "indicador": x["indicador"], "veredito": x["veredito"], "resumo": x["resumo"]}
+            for x in itens if x["veredito"] in ("malicioso", "suspeito")
+        ]
+        dados["consultas_sem_registro"] = sum(1 for x in itens if x["veredito"] == "sem_registro")
     return dados
 
 
-def montar_prompt(r: Any, diamante: Any = None, consultas: list | None = None) -> str:
+def montar_prompt(r: Any, diamante: Any = None, consultas: list | None = None, reputacao: list | None = None) -> str:
     serializado = (
-        json.dumps(_dados(r, diamante, consultas), ensure_ascii=False, indent=1)
+        json.dumps(_dados(r, diamante, consultas, reputacao), ensure_ascii=False, indent=1)
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
     )
@@ -111,7 +118,8 @@ TLDS_COMUNS = frozenset(
 )
 
 
-def conferir(texto: str, r: Any, diamante: Any = None, consultas: list | None = None) -> list[Invencao]:
+def conferir(texto: str, r: Any, diamante: Any = None, consultas: list | None = None,
+             reputacao: list | None = None) -> list[Invencao]:
     """
     O que o texto cita e a analise nao tem. Tecnica, IP e URL pelo mesmo
     verificador do resumo do artefato; dominio e endereco de e-mail aqui.
@@ -120,9 +128,15 @@ def conferir(texto: str, r: Any, diamante: Any = None, consultas: list | None = 
     if diamante is not None:
         tecnicas |= {t.tecnica for t in diamante.ttps}
     iocs = list(r.iocs) + [SimpleNamespace(valor=i.endereco) for i in r.identidades]
+    # Familia de malware citada so vale se alguma base de reputacao a deu.
+    familias = []
+    for x in reputacao or []:
+        d = x if isinstance(x, dict) else x.to_dict()
+        familias += list((d.get("detalhes") or {}).get("familias", [])) + list(d.get("tags", []))
     adaptado = SimpleNamespace(
         mapeamento=SimpleNamespace(tecnicas=[SimpleNamespace(tecnica_id=t) for t in tecnicas]),
-        atribuicao=None, iocs=iocs, virustotal=[], malwarebazaar=None,
+        atribuicao=None, iocs=iocs, virustotal=[],
+        malwarebazaar=SimpleNamespace(familia="", tags=familias) if familias else None,
     )
     # O trecho da isca pode ser citado; o que esta nele nao e invencao.
     invencoes = [i for i in verificar(texto, adaptado) if i.valor.lower() not in r.texto_visivel.lower()]
@@ -138,6 +152,9 @@ def conferir(texto: str, r: Any, diamante: Any = None, consultas: list | None = 
     for c in consultas or []:
         d = c if isinstance(c, dict) else c.to_dict()
         conhecidos.update(x.lower() for x in d.get("dominios_irmaos", []))
+    for x in reputacao or []:
+        d = x if isinstance(x, dict) else x.to_dict()
+        conhecidos.add(d["indicador"].lower())
     if r.origem is not None:
         conhecidos.add(r.origem.de.lower())
 
@@ -169,6 +186,7 @@ def gerar_resumo_email(
     r: Any,
     diamante: Any = None,
     consultas: list | None = None,
+    reputacao: list | None = None,
     modelo: str = MODELO_PADRAO,
     url: str = URL_OLLAMA_PADRAO,
     timeout: int = TIMEOUT_PADRAO,
@@ -189,14 +207,14 @@ def gerar_resumo_email(
 
     inicio = time.monotonic()
     try:
-        resumo.texto = cliente.gerar(montar_prompt(r, diamante, consultas), progresso=progresso, max_tokens=MAX_TOKENS).strip()
+        resumo.texto = cliente.gerar(montar_prompt(r, diamante, consultas, reputacao), progresso=progresso, max_tokens=MAX_TOKENS).strip()
     except ErroResumoIA as erro:
         resumo.erro = str(erro)
         resumo.duracao_segundos = time.monotonic() - inicio
         return resumo
     resumo.duracao_segundos = time.monotonic() - inicio
     resumo.gerado = True
-    resumo.invencoes = conferir(resumo.texto, r, diamante, consultas)
+    resumo.invencoes = conferir(resumo.texto, r, diamante, consultas, reputacao)
     if resumo.invencoes:
         resumo.avisos.append(
             f"{len(resumo.invencoes)} afirmação(ões) do resumo não correspondem a nenhum achado desta análise"

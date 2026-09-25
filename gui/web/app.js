@@ -1918,7 +1918,9 @@ VISTAS.email = () => {
       interruptor(e.online, (v) => { e.online = v; }, e.carregando, "Consultar domínios na internet"),
       h("div", {},
         h("div", { style: "font-weight:600" }, "Consultar domínios na internet"),
-        h("div", { class: "t3", style: "font-size:12px" }, "DNS, idade e registrador dos domínios do e-mail. Só o nome do domínio sai daqui; nenhum link é acessado.")),
+        h("div", { class: "t3", style: "font-size:12px" },
+          "DNS, idade, certificados e reputação" + (estado.ambiente?.fontes_de_reputacao?.length ? ` (${estado.ambiente.fontes_de_reputacao.join(", ")})` : "")
+          + ". Só o domínio ou o indicador sai daqui; nenhum link é acessado.")),
     ),
   );
 
@@ -2046,6 +2048,7 @@ function resultadoDoEmail(d) {
   );
 
   const doms = !d.dominios?.length ? null : h("div", { class: "mt-16" }, d.dominios.map((c) => painelDominio(c, true)));
+  const reputacao = blocoReputacao(d.reputacao);
 
   const oculto = !d.texto_oculto ? null : h(
     "details",
@@ -2065,8 +2068,37 @@ function resultadoDoEmail(d) {
   return h("div", { class: "mt-16" },
     d.avisos?.length ? nota("aviso", d.avisos.join(" ")) : null,
     veredito, acoesDoEmail(), blocoIAEmail(), painelSinais, blocoDiamante(d.diamante), blocoTTPs(d.diamante),
-    blocoPiramide(d.piramide), blocoGrafo(d.grafo), blocoYaraEmail(), identidades, caminho, links, anexos, iocs,
+    reputacao, blocoPiramide(d.piramide), blocoGrafo(d.grafo), blocoYaraEmail(), identidades, caminho, links, anexos, iocs,
     doms, oculto, cabecalhos);
+}
+
+const VEREDITO_REPUTACAO = {
+  malicioso: ["Malicioso", "alta"], suspeito: ["Suspeito", "media"], sem_registro: ["Sem registro", ""], erro: ["Falhou", ""],
+};
+
+function blocoReputacao(lista) {
+  if (!lista?.length) return null;
+  const achados = lista.filter((x) => x.encontrado).length;
+  const fontes = [...new Set(lista.map((x) => x.fonte))];
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Reputação em bases de inteligência"),
+      h("span", { class: `etiqueta ${achados ? "alta" : ""}` }, achados ? `${achados} registro(s)` : "nada registrado"),
+      h("span", { class: "t3", style: "margin-left:auto;font-size:12px" }, fontes.join(" · "))),
+    h("div", { class: "tabela-wrap" }, h("table", { class: "tabela" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Fonte"), h("th", {}, "Indicador"), h("th", {}, "Veredito"), h("th", {}, "O que a fonte diz"))),
+      h("tbody", {}, lista.map((x) => {
+        const [rotulo, classe] = VEREDITO_REPUTACAO[x.veredito] || [x.veredito, ""];
+        return h("tr", {},
+          h("td", { class: "estreita" }, x.fonte),
+          h("td", { class: "quebra" }, valorCopiavel(defang(x.indicador))),
+          h("td", { class: "estreita" }, h("span", { class: `etiqueta ${classe}` }, rotulo)),
+          h("td", {}, x.resumo || x.erro, x.tags?.length ? h("div", { class: "etiquetas", style: "margin-top:4px" }, x.tags.slice(0, 8).map((t) => h("span", { class: "etiqueta mono" }, t))) : null,
+            x.referencia && x.encontrado ? h("div", { style: "margin-top:4px" }, linkExterno(x.referencia, `ver no ${x.fonte}`)) : null));
+      })))),
+    h("div", { class: "painel-rodape t3", style: "font-size:12px" }, "“Sem registro” não é “limpo”: infraestrutura de phishing costuma viver dias e nunca chegar a base nenhuma."),
+  );
 }
 
 function analisarEmail() {
