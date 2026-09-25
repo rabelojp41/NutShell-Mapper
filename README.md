@@ -69,6 +69,7 @@ e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
 | `enrichment/abusech_client.py` | URLhaus (distribuicao de malware) e ThreatFox (IOCs com familia e confianca) |
 | `enrichment/abuseipdb_client.py` | reputacao de IP por relatos da comunidade, com provedor, pais e tipo de uso |
+| `enrichment/otx_client.py` | pulses do OTX AlienVault que citam o indicador |
 | `enrichment/consulta_reputacao.py` | pergunta a cada fonte de reputacao configurada o que ela sabe consultar, em paralelo |
 | `enrichment/consulta_dominio.py` | DNS, RDAP, certificados (Certificate Transparency) e subdominios, tudo passivo |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
@@ -378,8 +379,10 @@ python main.py email mensagem.eml --online --ia --yara --pdf --navigator
 
 Com `--online`, a infraestrutura do atacante (IP de origem, dominios, URLs,
 hashes de anexo) e consultada em todas as fontes configuradas: URLhaus e
-ThreatFox (mesma chave do abuse.ch) e AbuseIPDB (IPs: pontuacao de abuso,
-relatos por categoria e, mesmo sem relato, quem hospeda o IP). Cada resultado vem como
+ThreatFox (mesma chave do abuse.ch), AbuseIPDB (IPs: pontuacao de abuso,
+relatos por categoria e, mesmo sem relato, quem hospeda o IP) e OTX
+AlienVault (pulses que citam o indicador, com adversario, familia, tecnicas
+ATT&CK e a validacao que evita falso positivo em dominio conhecido). Cada resultado vem como
 malicioso, suspeito, sem registro ou falha - "sem registro" nao e "limpo":
 infraestrutura de phishing costuma viver dias e nunca chegar a base
 nenhuma. O que as bases dizem entra no Diamond, no PDF e no contexto da IA;

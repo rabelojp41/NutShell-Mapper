@@ -248,3 +248,62 @@ def test_diamante_mostra_o_provedor_da_origem(tmp_path):
     d = diamante_do_email(r, reputacao=rep)
     origem = next(i for i in d.infraestrutura.itens if i.valor == "89.144.9.87")
     assert "GHOSTnet GmbH (DE)" in origem.descricao
+
+
+# ============================================================
+# OTX
+# ============================================================
+
+
+def _otx(dados, encontrado=True):
+    from enrichment.otx_client import OTXClient
+
+    c = OTXClient("chave")
+    pedidos = []
+
+    def falso(caminho, **kw):
+        pedidos.append(caminho)
+        return RespostaEnriquecimento(consultado=True, encontrado=encontrado, dados=dados or {})
+
+    c._requisitar = falso
+    return c, pedidos
+
+
+def test_otx_pulses_com_contexto():
+    pulses = [
+        {"id": "p1", "name": "Campanha X", "created": "2026-09-01T00:00:00", "adversary": "TA505",
+         "malware_families": [{"display_name": "Dridex"}], "attack_ids": [{"id": "T1566.001"}], "tags": ["phishing"]},
+        {"id": "p2", "name": "Outra", "created": "2026-09-10T00:00:00", "tags": ["Phishing"]},
+    ]
+    c, pedidos = _otx({"pulse_info": {"count": 2, "pulses": pulses}, "validation": []})
+    r = c.consultar("golpe.top")
+    assert pedidos == ["/indicators/domain/golpe.top/general"]
+    # Poucos pulses, mas com adversario e familia: malicioso.
+    assert r.veredito == "malicioso"
+    assert r.detalhes["adversarios"] == ["TA505"] and r.detalhes["familias"] == ["Dridex"]
+    assert r.detalhes["ultimos_pulses"][0]["nome"] == "Outra"
+    assert r.tags == ["phishing"]
+    assert r.referencia == "https://otx.alienvault.com/indicator/domain/golpe.top"
+
+
+def test_otx_um_pulse_sem_contexto_e_suspeito_e_tipos_de_rota():
+    c, pedidos = _otx({"pulse_info": {"count": 1, "pulses": [{"id": "x", "name": "honeypot"}]}})
+    assert c.consultar("45.13.7.9").veredito == "suspeito"
+    c.consultar("login.golpe.top")
+    c.consultar("http://golpe.top/a b")
+    c.consultar("a" * 64)
+    assert pedidos[1:] == ["/indicators/hostname/login.golpe.top/general",
+                           "/indicators/url/http%3A%2F%2Fgolpe.top%2Fa%20b/general",
+                           f"/indicators/file/{'a' * 64}/general"]
+
+
+def test_otx_validacao_evita_falso_positivo():
+    c, _ = _otx({"pulse_info": {"count": 7, "pulses": [{"name": "lista errada"}]},
+                 "validation": [{"source": "whitelist", "message": "Whitelisted domain google.com"}]})
+    r = c.consultar("google.com")
+    assert r.veredito == "sem_registro" and "legítimo" in r.resumo
+
+
+def test_otx_desconhecido():
+    c, _ = _otx({}, encontrado=False)
+    assert c.consultar("x.top").veredito == "sem_registro"
