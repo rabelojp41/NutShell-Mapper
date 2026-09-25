@@ -1,9 +1,19 @@
 # Nut-Shell Mapper
 
-Framework de **Cyber Threat Intelligence** em Python para analise estatica de
-artefatos suspeitos: extracao de strings, desofuscacao, geracao de regras YARA,
-mapeamento MITRE ATT&CK, atribuicao de grupos, Cyber Kill Chain, scoring CVSS,
-enriquecimento via VirusTotal/Shodan e relatorio automatizado.
+Framework de **Cyber Threat Intelligence** em Python. Duas frentes:
+
+- **Artefatos suspeitos** (executavel, DLL, shellcode, documento): extracao de
+  strings, desofuscacao, regra YARA validada, MITRE ATT&CK, Cyber Kill Chain,
+  grupos com repertorio parecido, CVSS e relatorio.
+- **E-mails de phishing** (.eml): caminho entre servidores, SPF/DKIM/DMARC,
+  remetente falso, links, anexos, **Diamond Model**, **TTPs com
+  procedimento**, **Pyramid of Pain**, grafo de pivo, regra YARA da
+  campanha, reputacao em bases de inteligencia e **relatorio executivo em
+  PDF**.
+
+Com IA local (Qwen3.5-9B do Hugging Face, rodando no Ollama, sem nada sair da
+maquina) para o resumo executivo e para encaixar os achados do analista - e
+toda afirmacao da IA conferida contra os achados.
 
 > Projeto de portfolio. Testado com amostras publicas (MalwareBazaar, tria.ge)
 > e arquivos benignos (EICAR) em ambiente de desenvolvimento.
@@ -20,6 +30,14 @@ binario -> strings (floss) -> desofuscacao -> IOCs
                                      |
                                      v
                           relatorio PDF / DOCX
+
+e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
+                                     |
+            dominios (DNS, RDAP, certificados) + reputacao (abuse.ch...)
+                                     |
+       Diamond Model + TTPs + Pyramid of Pain + grafo  <-  notas do analista
+                                     |                    (verificadas)
+          regra YARA da campanha, resumo por IA, PDF executivo, Navigator
 ```
 
 ## Estrutura
@@ -36,12 +54,26 @@ binario -> strings (floss) -> desofuscacao -> IOCs
 | `core/cvss_calculator.py` | score CVSS 3.1 (base, temporal e ambiental) |
 | `core/resumo_ia.py` | resumo executivo por LLM **local** (Ollama), com verificacao automatica contra os achados |
 | `core/pipeline.py` | orquestra as etapas, isola falhas e consolida o resultado |
+| `core/analise_email.py` | le o .eml: caminho entre servidores, autenticacao, identidades, links, anexos, texto oculto, sinais e veredito |
+| `core/dominios.py` | dominio registravel, imitacao de marca (typosquatting, punycode), webmail, encurtadores |
+| `core/yara_email.py` | regra YARA da campanha a partir do e-mail, validada |
+| `core/diamante.py` | Diamond Model e TTPs (tatica, tecnica, procedimento) do e-mail e do artefato |
+| `core/piramide.py` | Pyramid of Pain e IoC x IoA |
+| `core/grafo.py` | grafo de pivo |
+| `core/ia_email.py` | resumo executivo do e-mail pela IA local, conferido |
+| `core/contribuicao.py` | notas do analista: extracao, classificacao (IA ou regra), pesquisa e validacao em duas etapas |
+| `core/modelo_hf.py` | baixa o modelo do Hugging Face, confere o SHA256 e registra no Ollama |
 | `enrichment/virustotal_client.py` | lookup de hash, IP, dominio e URL. **Nao envia o arquivo** |
 | `enrichment/shodan_client.py` | portas e servicos dos IPs publicos extraidos |
 | `enrichment/nvd_client.py` | busca o vetor CVSS oficial de CVE citada pelo artefato |
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
+| `enrichment/abusech_client.py` | URLhaus (distribuicao de malware) e ThreatFox (IOCs com familia e confianca) |
+| `enrichment/consulta_reputacao.py` | pergunta a cada fonte de reputacao configurada o que ela sabe consultar, em paralelo |
+| `enrichment/consulta_dominio.py` | DNS, RDAP, certificados (Certificate Transparency) e subdominios, tudo passivo |
 | `reports/report_generator.py` | relatorio em Markdown, JSON, PDF e DOCX |
 | `reports/ioc_export.py` | exporta os indicadores em CSV, STIX 2.1 e evento MISP |
+| `reports/relatorio_executivo.py` | relatorio executivo do e-mail em PDF |
+| `reports/navigator.py` | layer do ATT&CK Navigator |
 | `gui/` | interface desktop: pagina HTML local (`gui/web/`) numa janela nativa, e a ponte com o Python (`gui/ponte.py`) |
 | `main.py` | linha de comando |
 
@@ -96,6 +128,10 @@ Outros comandos:
 | `python main.py cvss "<vetor>"` | calcula um score CVSS 3.1 avulso |
 | `python main.py atualizar-attack` | baixa o bundle STIX do MITRE ATT&CK |
 | `python main.py bazaar <hash>` | consulta um hash no MalwareBazaar |
+| `python main.py email msg.eml` | analisa um e-mail (ver abaixo) |
+| `python main.py dominio exemplo.com` | DNS, idade, certificados e subdominios, de forma passiva |
+| `python main.py instalar-ia` | baixa o modelo de IA do Hugging Face e registra no Ollama |
+| `python main.py atalho` | cria o atalho com icone na Area de Trabalho e no Menu Iniciar |
 | `python main.py gui` | abre a interface grafica |
 
 Opcoes uteis do `analisar`: `--sem-floss` (bem mais rapido, so strings
@@ -336,6 +372,43 @@ python main.py email mensagem.eml --online --ia --yara --pdf --navigator
   indicadores defangados.
 - **Layer do ATT&CK Navigator** (`--navigator`): abre direto no Navigator
   com as tecnicas pintadas e o procedimento no comentario.
+
+#### Reputacao em bases de inteligencia
+
+Com `--online`, a infraestrutura do atacante (IP de origem, dominios, URLs,
+hashes de anexo) e consultada em todas as fontes configuradas: hoje URLhaus
+e ThreatFox, com a mesma chave do abuse.ch. Cada resultado vem como
+malicioso, suspeito, sem registro ou falha - "sem registro" nao e "limpo":
+infraestrutura de phishing costuma viver dias e nunca chegar a base
+nenhuma. O que as bases dizem entra no Diamond, no PDF e no contexto da IA;
+familia de malware so pode ser citada pela IA se alguma base a deu.
+
+#### Contribuicoes do analista
+
+A ferramenta traz o grosso; o analista acha o resto. Uma nota em texto livre
+("o certificado de golpe.com tambem cobre login-ms.xyz") entra no fluxo:
+
+1. Os indicadores da nota sao extraidos (aceita formato defangado) e os que
+   a analise ainda nao tinha ficam marcados como novos.
+2. A IA local propoe onde o achado se encaixa no Diamond, a qual indicador
+   ele se liga e o que a ferramenta deve pesquisar - so acoes de um
+   cardapio fechado, so sobre indicadores da nota. A proposta e conferida
+   e o que nao bate e descartado. Sem IA, uma regra faz o mesmo papel.
+3. **Validacao em duas etapas.** No modo padrao ("verificar"), a ferramenta
+   consulta o indicador novo e so o poe na analise se achar ligacao
+   concreta: mesmo certificado ou mesmo IP (forte), mesma familia de
+   malware (media), ou duas fracas (servidor de nomes, servidor de e-mail,
+   registrador no mesmo mes). Sem isso, fica como hipotese, listada mas fora
+   do Diamond e do grafo. No modo "certeza", o analista garante e o achado
+   entra direto. Quem valida e a evidencia, nao a IA.
+
+Tudo que entra leva a origem marcada: achado da ferramenta, afirmado pelo
+analista ou confirmado pela ferramenta.
+
+```bash
+python main.py email msg.eml --online --nota "o certificado de golpe.com tambem cobre login-ms.xyz"
+python main.py email msg.eml --nota-certa "o operador reusa a conta x@proton.me"
+```
 
 Com `--online`, cada dominio envolvido passa pela consulta passiva abaixo,
 incluindo a **analise de certificados**: emissor, primeiro certificado

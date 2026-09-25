@@ -521,6 +521,14 @@ def _email_envenenado(tmp_path, carga: str) -> dict:
     d["reputacao"] = [{"fonte": carga, "indicador": carga, "tipo": "dominio", "veredito": "malicioso", "resumo": carga,
                        "tags": [carga], "detalhes": {}, "referencia": "javascript:window.__invadido=7", "erro": carga,
                        "encontrado": True}]
+    d["contribuicoes"] = [{
+        "id": "abc", "texto": carga, "criada_em": carga, "vertice": "infraestrutura", "relacionado_a": carga,
+        "relacao": carga, "tecnica": "T1598", "justificativa": carga, "classificado_por": carga, "descartes": [carga],
+        "indicadores": [{"valor": carga, "tipo": "dominio", "novo": True}],
+        "acoes": [{"acao": carga, "alvo": carga, "motivo": carga}],
+        "resultados": {"dominios": [{"registravel": carga, "dominios_irmaos": [carga]}],
+                       "reputacao": [{"fonte": carga, "resumo": carga, "encontrado": True}]},
+    }]
     item = {"valor": carga, "descricao": carga, "tipo": "tipo 1"}
     vertice = {"nome": carga, "resumo": carga, "itens": [item] * 5}
     d["diamante"] = {

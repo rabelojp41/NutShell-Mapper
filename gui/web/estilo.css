@@ -1734,3 +1734,15 @@ details.dobra[open] > summary::after { content: "▾"; }
 .grafo-legenda { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; font-size: 11.5px; color: var(--text-3); }
 .grafo-legenda > span { display: inline-flex; align-items: center; gap: 5px; }
 .grafo-bolinha { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ---------- Contribuicoes do analista ---------- */
+
+.contrib-campo { width: 100%; resize: vertical; min-height: 64px; font-family: var(--font-ui); line-height: 1.5; }
+.contrib-item { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 10px 12px; background: var(--surface-2); }
+.contrib-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.contrib-texto { margin: 0 0 8px; padding: 0 0 0 10px; border-left: 2px solid var(--border-strong); color: var(--text); font-style: italic; overflow-wrap: anywhere; }
+
+.contrib-item.nao_confirmado, .contrib-item.nao_verificado { border-left-color: var(--media); opacity: 0.85; }
+.contrib-item.confirmado { border-left-color: var(--ok); }
+.contrib-evidencias { margin: 0 0 8px; padding: 0; list-style: none; font-size: 12.5px; }
+.contrib-evidencias li { padding: 2px 0; }

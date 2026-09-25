@@ -747,6 +747,82 @@ class Ponte(QObject):
 
         self._em_segundo_plano("email", analisar)
 
+    @Slot(str, bool, bool, bool)
+    def adicionarContribuicao(self, texto: str, usar_ia: bool, online: bool, certeza: bool) -> None:
+        """
+        Achado do analista: extrai os indicadores, classifica (IA ou regra),
+        roda as pesquisas escolhidas e refaz Diamond, piramide e grafo.
+        """
+        if self._resultado_email is None:
+            self.tarefaConcluida.emit(para_json({"id": "contribuicao", "ok": False, "erro": "nenhum e-mail analisado"}))
+            return
+        resultado = self._resultado_email
+        extra = self._email_extra
+
+        def andamento(mensagem) -> None:
+            texto_ = mensagem if isinstance(mensagem, str) else mensagem.resumo()
+            self.andamentoTarefa.emit(para_json({"id": "contribuicao", "mensagem": texto_}))
+
+        def processar():
+            from core import contribuicao as ct
+            from core.diamante import diamante_do_email
+            from core.grafo import grafo_do_email
+            from core.piramide import piramide_do_email
+
+            c = ct.nova_contribuicao(texto, resultado, extra.get("diamante"), modo="certeza" if certeza else "verificar")
+            if not (usar_ia and ct.classificar_com_ia(c, resultado, extra.get("diamante"), progresso=andamento)):
+                ct.classificar_por_regra(c, resultado)
+            ct.executar_acoes(c, online=online, progresso=andamento)
+            anteriores = extra.setdefault("contribuicoes", [])
+            confirmadas = [x for x in anteriores if x.entra_na_analise]
+            ct.validar(
+                c, resultado,
+                list(extra.get("consultas", [])) + [d for x in confirmadas for d in x.resultados.get("dominios", [])],
+                list(extra.get("reputacao", [])) + [y for x in confirmadas for y in x.resultados.get("reputacao", [])],
+                online=online,
+            )
+            contribuicoes = anteriores + [c]
+            dados = self._recompor_email(resultado, extra, contribuicoes, ct, diamante_do_email, grafo_do_email, piramide_do_email)
+            if resultado is self._resultado_email:
+                extra["contribuicoes"] = contribuicoes
+                extra.update(dados["_objetos"])
+            del dados["_objetos"]
+            return dados
+
+        self._em_segundo_plano("contribuicao", processar)
+
+    @Slot(str, result=str)
+    def removerContribuicao(self, identificador: str) -> str:
+        if self._resultado_email is None:
+            return _erro("nenhum e-mail analisado")
+        from core import contribuicao as ct
+        from core.diamante import diamante_do_email
+        from core.grafo import grafo_do_email
+        from core.piramide import piramide_do_email
+
+        extra = self._email_extra
+        restantes = [c for c in extra.get("contribuicoes", []) if c.id != identificador]
+        dados = self._recompor_email(self._resultado_email, extra, restantes, ct, diamante_do_email, grafo_do_email, piramide_do_email)
+        extra["contribuicoes"] = restantes
+        extra.update(dados.pop("_objetos"))
+        return para_json({"ok": True, **dados})
+
+    @staticmethod
+    def _recompor_email(resultado, extra, contribuicoes, ct, diamante_do_email, grafo_do_email, piramide_do_email) -> dict:
+        # So o que foi confirmado (ou afirmado com certeza) alimenta a analise.
+        validas = [c for c in contribuicoes if c.entra_na_analise]
+        consultas = list(extra.get("consultas", [])) + [d for c in validas for d in c.resultados.get("dominios", [])]
+        reputacao = list(extra.get("reputacao", [])) + [x for c in validas for x in c.resultados.get("reputacao", [])]
+        diamante = diamante_do_email(resultado, consultas, reputacao)
+        grafo = grafo_do_email(resultado, diamante, consultas)
+        ct.aplicar(diamante, grafo, contribuicoes)
+        piramide = piramide_do_email(resultado, diamante)
+        return {
+            "diamante": diamante.to_dict(), "grafo": grafo.to_dict(), "piramide": piramide.to_dict(),
+            "contribuicoes": [c.to_dict() for c in contribuicoes],
+            "_objetos": {"diamante": diamante, "grafo": grafo, "piramide": piramide},
+        }
+
     @Slot(result=str)
     def gerarYaraEmail(self) -> str:
         if self._resultado_email is None:
@@ -814,7 +890,8 @@ class Ponte(QObject):
             extra["regra"] = gerar_regra_email(r)
         try:
             salvar_pdf_email(r, caminho, extra.get("diamante"), extra.get("piramide"), extra.get("grafo"),
-                             extra.get("resumo"), extra.get("regra"), extra.get("consultas"), extra.get("reputacao"))
+                             extra.get("resumo"), extra.get("regra"), extra.get("consultas"), extra.get("reputacao"),
+                             extra.get("contribuicoes"))
         except (ErroRelatorioExecutivo, OSError) as erro:
             return _erro(str(erro))
         self._gravados.add(str(Path(caminho).resolve()))

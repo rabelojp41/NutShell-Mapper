@@ -476,6 +476,18 @@ def _imprimir_dominio(c) -> None:
         print(f"  (falhou) {erro}")
 
 
+def _grafo_com_contribuicoes(r, diamante, consultas, contribuicoes):
+    from core.grafo import grafo_do_email
+
+    extra = [d for c in contribuicoes if c.entra_na_analise for d in c.resultados.get("dominios", [])]
+    grafo = grafo_do_email(r, diamante, list(consultas) + extra)
+    if contribuicoes:
+        from core import contribuicao as ct
+
+        ct.aplicar(None, grafo, contribuicoes)
+    return grafo
+
+
 def _imprimir_reputacao(reputacao) -> None:
     from core.dominios import defang
 
@@ -601,6 +613,55 @@ def comando_email(args: argparse.Namespace) -> int:
             _imprimir_reputacao(reputacao)
 
     diamante = diamante_do_email(r, consultas, reputacao)
+
+    # --- Contribuicoes do analista (--nota) ---
+    contribuicoes = []
+    if args.nota or args.nota_certa:
+        from core import contribuicao as ct
+
+        _secao("Contribuições do analista")
+        notas = [(t, "verificar") for t in args.nota] + [(t, "certeza") for t in args.nota_certa]
+        for texto, modo in notas:
+            try:
+                c = ct.nova_contribuicao(texto, r, diamante, modo=modo)
+            except ValueError as erro:
+                print(f"  nota ignorada: {erro}")
+                continue
+            if not (args.ia and ct.classificar_com_ia(c, r, diamante, modelo=args.modelo_ia)):
+                ct.classificar_por_regra(c, r)
+            ct.executar_acoes(c, online=args.online)
+            confirmadas = [x for x in contribuicoes if x.entra_na_analise]
+            ct.validar(c, r, consultas + [d for x in confirmadas for d in x.resultados.get("dominios", [])],
+                       list(reputacao) + [y for x in confirmadas for y in x.resultados.get("reputacao", [])],
+                       online=args.online)
+            contribuicoes.append(c)
+            novos = [defang(i.valor) for i in c.indicadores if i.novo]
+            print(f"  “{c.texto[:100]}”")
+            print(f"    vértice: {c.vertice} · classificado por: {c.classificado_por}")
+            status = {"confirmado": "CONFIRMADO pela ferramenta", "nao_confirmado": "NÃO confirmado (hipótese, fora da análise)",
+                      "nao_verificado": "não verificado (offline; fora da análise)", "afirmado": "afirmado pelo analista (modo certeza)"}
+            print(f"    validação: {status.get(c.validacao['status'], c.validacao['status'])}")
+            for e in c.validacao.get("evidencias", []):
+                print(f"      [{e['forca']}] {e['texto']}")
+            print(f"    indicadores novos: {', '.join(novos) or 'nenhum'}")
+            if c.relacionado_a:
+                print(f"    ligação: {c.relacao} ({defang(c.relacionado_a)})")
+            for acao in c.acoes:
+                print(f"    pesquisa: {acao.acao} {defang(acao.alvo)}")
+            for d in c.resultados.get("dominios", []):
+                for obs in d.get("observacoes", [])[:3]:
+                    print(f"      {d.get('registravel')}: {obs}")
+            for x in c.resultados.get("reputacao", []):
+                if x.get("encontrado"):
+                    print(f"      {x['fonte']}: {x['resumo']}")
+            for descarte in c.descartes:
+                print(f"    (obs) {descarte}")
+        validas = [c for c in contribuicoes if c.entra_na_analise]
+        consultas_extra = [d for c in validas for d in c.resultados.get("dominios", [])]
+        reputacao_extra = [x for c in validas for x in c.resultados.get("reputacao", [])]
+        diamante = diamante_do_email(r, consultas + consultas_extra, list(reputacao) + reputacao_extra)
+        ct.aplicar(diamante, None, contribuicoes)
+
     piramide = piramide_do_email(r, diamante)
     _secao("Diamond Model")
     for vertice in (diamante.adversario, diamante.capacidade, diamante.infraestrutura, diamante.vitima):
@@ -679,7 +740,8 @@ def comando_email(args: argparse.Namespace) -> int:
         try:
             destino_pdf = salvar_pdf_email(
                 r, saida / f"{caminho.stem}_{r.sha256[:8]}_executivo.pdf", diamante, piramide,
-                grafo_do_email(r, diamante, consultas), resumo, regra, consultas, reputacao,
+                _grafo_com_contribuicoes(r, diamante, consultas, contribuicoes), resumo, regra, consultas, reputacao,
+                contribuicoes,
             )
             print(f"  Relatório executivo (PDF): {destino_pdf}")
         except ErroRelatorioExecutivo as erro:
@@ -693,6 +755,7 @@ def comando_email(args: argparse.Namespace) -> int:
         dados["piramide"] = piramide.to_dict()
         if resumo is not None:
             dados["resumo_ia"] = resumo.to_dict()
+        dados["contribuicoes"] = [c.to_dict() for c in contribuicoes]
         destino.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n  JSON: {destino}")
     if args.exportar_iocs:
@@ -949,6 +1012,15 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--modelo-ia", default=MODELO_PADRAO, help=f"modelo do Ollama (padrao: {MODELO_PADRAO})")
     p.add_argument("--pdf", action="store_true", help="relatório executivo em PDF (Diamond, TTPs, pirâmide, grafo, YARA)")
     p.add_argument("--navigator", action="store_true", help="exporta a layer do ATT&CK Navigator")
+    p.add_argument(
+        "--nota", action="append", default=[], metavar="TEXTO",
+        help="achado do analista para VERIFICAR (repita para mais de um): so entra com evidência de ligação; "
+             "com --ia a IA classifica, com --online as pesquisas e a verificação rodam",
+    )
+    p.add_argument(
+        "--nota-certa", action="append", default=[], metavar="TEXTO",
+        help="achado do analista que você garante: entra direto, marcado como afirmado pelo analista",
+    )
     p.add_argument("-o", "--saida", default="output", help="diretorio de saida (padrao: output)")
     p.add_argument("--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"])
     p.add_argument("--confianca-minima", choices=["alta", "media", "baixa"], default="media")

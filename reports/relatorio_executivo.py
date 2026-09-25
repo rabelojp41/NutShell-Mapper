@@ -261,6 +261,7 @@ def salvar_pdf_email(
     regra_yara: Any = None,
     consultas: list | None = None,
     reputacao: list | None = None,
+    contribuicoes: list | None = None,
 ) -> Path:
     try:
         from reportlab.lib import colors
@@ -430,6 +431,35 @@ def salvar_pdf_email(
         for p in diamante.pivos:
             el.append(Paragraph(limpo(f"{p.de} → {p.para}: {p.acao}"), s_corpo))
             el.append(Spacer(1, 2))
+
+    if contribuicoes:
+        el.append(Paragraph("Contribuições do analista", s_h))
+        el.append(Paragraph("Achados informados por quem analisou, fora do que a ferramenta encontrou sozinha. "
+                            "A classificação indica se foi feita por regra ou pela IA local, conferida.", s_peq))
+        for c in contribuicoes:
+            d = c if isinstance(c, dict) else c.to_dict()
+            el.append(Spacer(1, 4))
+            el.append(Paragraph(limpo(f"“{d['texto']}”"), s_corpo))
+            novos = [i["valor"] for i in d["indicadores"] if i["novo"]]
+            status = {"confirmado": "Confirmado pela ferramenta", "nao_confirmado": "Hipótese não confirmada (fora da análise)",
+                      "nao_verificado": "Não verificado (fora da análise)", "afirmado": "Afirmado pelo analista, sem verificação"}
+            linhas = [["Validação", status.get(d["validacao"]["status"], d["validacao"]["status"])
+                       + "".join(f" · [{e['forca']}] {e['texto']}" for e in d["validacao"].get("evidencias", []))],
+                      ["Vértice", {"adversario": "Adversário", "capacidade": "Capacidade", "infraestrutura": "Infraestrutura", "vitima": "Vítima"}.get(d["vertice"], d["vertice"] or "—")],
+                      ["Indicadores novos", ", ".join(dominios.defang(v) for v in novos) or "—"],
+                      ["Ligação", f"{d['relacao']} ({dominios.defang(d['relacionado_a'])})" if d["relacionado_a"] else "—"],
+                      ["Classificado por", "regra" if d["classificado_por"] == "regra" else f"IA local ({d['classificado_por']})"],
+                      ["Pesquisas", "; ".join(f"{a['acao']} {dominios.defang(a['alvo'])}" for a in d["acoes"]) or "—"]]
+            if d.get("tecnica"):
+                linhas.append(["Técnica sugerida", d["tecnica"]])
+            if d.get("justificativa"):
+                linhas.append(["Justificativa", d["justificativa"]])
+            achados = [x for x in d["resultados"].get("reputacao", []) if x.get("encontrado")]
+            for x in achados:
+                linhas.append(["Reputação", f"{x['fonte']}: {x['resumo']}"])
+            for dd in d["resultados"].get("dominios", []):
+                linhas.append([f"Domínio {dd.get('registravel')}", "; ".join(dd.get("observacoes", [])[:4]) or "consultado"])
+            el.append(tabela(linhas, [largura * 0.2, largura * 0.8], cabecalho=False))
 
     # --- Evidencias ---
     el.append(PageBreak())

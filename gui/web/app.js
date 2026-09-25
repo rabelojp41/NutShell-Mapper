@@ -233,7 +233,8 @@ const estado = {
   resultado: null,
   filtro: { iocs: "todos", buscaIocs: "", tecnicas: "todos", strings: "todos", buscaStrings: "", limiteStrings: 300 },
   bazaar: { hash: "", carregando: false, consulta: null, erro: "", baixando: false, baixada: null },
-  email: { arquivo: null, online: false, carregando: false, dados: null, erro: "", mensagem: "", ia: null, yara: null },
+  email: { arquivo: null, online: false, carregando: false, dados: null, erro: "", mensagem: "", ia: null, yara: null,
+           contrib: { rascunho: "", usarIA: true, certeza: false, carregando: false, erro: "", mensagem: "" } },
   dominio: { valor: "", subdominios: true, carregando: false, dados: null, erro: "", filtro: "" },
   attackAtualizando: false,
   menuAberto: null,
@@ -2067,7 +2068,7 @@ function resultadoDoEmail(d) {
 
   return h("div", { class: "mt-16" },
     d.avisos?.length ? nota("aviso", d.avisos.join(" ")) : null,
-    veredito, acoesDoEmail(), blocoIAEmail(), painelSinais, blocoDiamante(d.diamante), blocoTTPs(d.diamante),
+    veredito, acoesDoEmail(), blocoIAEmail(), blocoContribuicoes(), painelSinais, blocoDiamante(d.diamante), blocoTTPs(d.diamante),
     reputacao, blocoPiramide(d.piramide), blocoGrafo(d.grafo), blocoYaraEmail(), identidades, caminho, links, anexos, iocs,
     doms, oculto, cabecalhos);
 }
@@ -2396,6 +2397,115 @@ function blocoPiramide(p) {
         })),
     ),
   );
+}
+
+// ---------- Contribuicoes do analista ----------
+//
+// O texto do analista e dado dele; os indicadores extraidos, a proposta da
+// IA e o resultado das pesquisas voltam do Python ja conferidos. Tudo e
+// exibido por h(), como o resto.
+
+const NOME_VERTICE = { adversario: "Adversário", capacidade: "Capacidade", infraestrutura: "Infraestrutura", vitima: "Vítima" };
+
+function blocoContribuicoes() {
+  const e = estado.email;
+  const c = e.contrib;
+  const campo = h("textarea", {
+    class: "campo contrib-campo", rows: "3", spellcheck: "false",
+    placeholder: "Ex.: o certificado de access-accsecurity.com também cobre login-ms-verify.xyz, que não apareceu na análise.",
+  });
+  campo.value = c.rascunho;
+  campo.addEventListener("input", () => { c.rascunho = campo.value; });
+  const lista = e.dados?.contribuicoes || [];
+  return h(
+    "div",
+    { class: "painel mt-16" },
+    h("div", { class: "painel-cab" }, h("span", { class: "painel-titulo" }, "Contribuições do analista"),
+      h("span", { class: "t3", style: "font-size:12px" }, "o que a ferramenta não viu e você viu")),
+    h("div", { class: "painel-corpo pilha" },
+      campo,
+      h("div", { class: "linha" },
+        interruptor(c.usarIA, (v) => { c.usarIA = v; }, c.carregando, "IA classifica"),
+        h("span", { class: "t2", style: "font-size:12.5px" }, "IA encaixa e escolhe as pesquisas"),
+        interruptor(c.certeza, (v) => { c.certeza = v; }, c.carregando, "Tenho certeza"),
+        h("span", { class: "t2", style: "font-size:12.5px" }, "Tenho certeza (entra sem verificar)"),
+        h("button", { class: "btn btn-primario", style: "margin-left:auto", disabled: c.carregando, onclick: adicionarContribuicao },
+          icone(c.carregando ? "recarregar" : "mais"), c.carregando ? "Processando…" : "Adicionar e pesquisar")),
+      c.carregando ? nota("info", h("span", { id: "contrib-andamento" }, c.mensagem || "Lendo a nota…")) : null,
+      c.erro ? nota("perigo", c.erro) : null,
+      !e.online ? h("div", { class: "t3", style: "font-size:12px" }, "Consultas externas desligadas: a nota entra no Diamond e no grafo, mas as pesquisas não rodam. Ligue “Consultar domínios na internet” para pesquisar.") : null,
+      lista.map(itemDeContribuicao),
+    ),
+  );
+}
+
+const STATUS_CONTRIBUICAO = {
+  confirmado: ["Confirmado pela ferramenta", "ok"],
+  nao_confirmado: ["Hipótese não confirmada", "media"],
+  nao_verificado: ["Não verificado", ""],
+  afirmado: ["Afirmado pelo analista", "acento"],
+};
+
+function itemDeContribuicao(c) {
+  const novos = c.indicadores.filter((i) => i.novo);
+  const [rotuloStatus, classeStatus] = STATUS_CONTRIBUICAO[c.validacao?.status] || ["—", ""];
+  const achados = (c.resultados?.reputacao || []).filter((x) => x.encontrado);
+  const irmaos = (c.resultados?.dominios || []).flatMap((d) => d.dominios_irmaos || []);
+  return h(
+    "div",
+    { class: `contrib-item ${c.validacao?.status || ""}` },
+    h("div", { class: "contrib-cab" },
+      h("span", { class: `etiqueta ${classeStatus}` }, rotuloStatus),
+      h("span", { class: "etiqueta acento" }, NOME_VERTICE[c.vertice] || "sem vértice"),
+      h("span", { class: "etiqueta" }, c.classificado_por === "regra" ? "classificado por regra" : `IA: ${c.classificado_por}`),
+      c.tecnica && linkTecnica(c.tecnica),
+      h("button", { class: "btn btn-fantasma btn-pequeno", style: "margin-left:auto", title: "Remover", onclick: () => removerContribuicao(c.id) }, icone("x"))),
+    h("blockquote", { class: "contrib-texto" }, c.texto),
+    c.validacao?.explicacao ? h("div", { class: "t2", style: "font-size:12.5px;margin-bottom:6px" }, c.validacao.explicacao) : null,
+    c.validacao?.evidencias?.length ? h("ul", { class: "contrib-evidencias" }, c.validacao.evidencias.map((e) =>
+      h("li", {}, h("span", { class: `etiqueta ${e.forca === "fraca" ? "" : "ok"}` }, e.forca), " ", e.texto))) : null,
+    h("dl", { class: "defs" },
+      h("dt", {}, "Indicadores novos"), h("dd", {}, novos.length ? h("div", { class: "etiquetas" }, novos.map((i) => h("span", { class: "etiqueta mono" }, defang(i.valor)))) : "nenhum (a nota cita só o que já estava na análise)"),
+      c.relacionado_a && [h("dt", {}, "Ligação"), h("dd", {}, `${c.relacao} `, h("span", { class: "mono" }, defang(c.relacionado_a)))],
+      c.acoes.length ? [h("dt", {}, "Pesquisas"), h("dd", {}, c.acoes.map((a) => h("div", {}, h("span", { class: "etiqueta" }, a.acao), " ", h("span", { class: "mono" }, defang(a.alvo)), a.motivo ? h("span", { class: "t3" }, ` — ${a.motivo}`) : null)))] : null,
+      achados.length ? [h("dt", {}, "Reputação"), h("dd", {}, achados.map((x) => h("div", {}, h("strong", {}, `${x.fonte}: `), x.resumo)))] : null,
+      irmaos.length ? [h("dt", {}, "Domínios irmãos"), h("dd", {}, h("div", { class: "etiquetas" }, irmaos.slice(0, 10).map((d) => h("span", { class: "etiqueta mono alta" }, defang(d)))))] : null,
+      c.justificativa && [h("dt", {}, "Justificativa"), h("dd", { class: "t2" }, c.justificativa)],
+    ),
+    c.descartes.length ? h("div", { class: "t3", style: "font-size:12px" }, "Descartado na conferência: " + c.descartes.join("; ")) : null,
+  );
+}
+
+function adicionarContribuicao() {
+  const e = estado.email;
+  const texto = e.contrib.rascunho.trim();
+  if (!texto) return;
+  Object.assign(e.contrib, { carregando: true, erro: "", mensagem: "" });
+  renderizar();
+  ponte.adicionarContribuicao(texto, e.contrib.usarIA, !!e.online, e.contrib.certeza);
+}
+
+function aplicarRecomposicao(dados) {
+  const d = estado.email.dados;
+  if (!d) return;
+  Object.assign(d, { diamante: dados.diamante, grafo: dados.grafo, piramide: dados.piramide, contribuicoes: dados.contribuicoes });
+}
+
+tarefas.contribuicao = (t) => {
+  const c = estado.email.contrib;
+  c.carregando = false;
+  if (t.ok) {
+    aplicarRecomposicao(t.dados);
+    c.rascunho = "";
+  } else c.erro = t.erro;
+  if (estado.vista === "email") renderizar();
+};
+
+async function removerContribuicao(id) {
+  const r = await chamar("removerContribuicao", id);
+  if (!r?.ok) return avisar("erro", "Não removida", r?.erro || "");
+  aplicarRecomposicao(r);
+  renderizar();
 }
 
 // ---------- Grafo de pivo ----------
@@ -2909,6 +3019,11 @@ function conectar() {
     ponte.arrastando.connect((json) => document.body.classList.toggle("arrastando", JSON.parse(json).ativo));
     ponte.andamentoTarefa.connect((json) => {
       const t = JSON.parse(json);
+      if (t.id === "contribuicao" && estado.email.contrib.carregando) {
+        estado.email.contrib.mensagem = t.mensagem;
+        const el = document.getElementById("contrib-andamento");
+        if (el) el.textContent = t.mensagem;
+      }
       if (t.id === "ia_email" && estado.email.ia?.carregando) {
         estado.email.ia.mensagem = t.mensagem;
         const el = document.getElementById("ia-email-andamento");
