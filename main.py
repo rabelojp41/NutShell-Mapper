@@ -566,8 +566,23 @@ def comando_email(args: argparse.Namespace) -> int:
             _imprimir_dominio(c)
 
     saida = Path(args.saida)
-    if args.json or args.exportar_iocs:
+    if args.json or args.exportar_iocs or args.yara:
         saida.mkdir(parents=True, exist_ok=True)
+    if args.yara:
+        from core.yara_email import gerar_regra_email
+
+        regra = gerar_regra_email(r, caminho)
+        _secao("Regra YARA da campanha")
+        if regra.texto:
+            print(regra.texto)
+        situacao = "válida (compila, casa com o e-mail e não casa com um e-mail comum)" if regra.valida and not regra.falsos_positivos else "NÃO validada"
+        print(f"  Regra {situacao}")
+        for aviso in regra.avisos:
+            print(f"  - {aviso}")
+        if regra.texto:
+            destino_yara = saida / f"{regra.nome}.yar"
+            destino_yara.write_text(regra.texto, encoding="utf-8")
+            print(f"  Salva em {destino_yara}")
     if args.json:
         destino = saida / f"{caminho.stem}_{r.sha256[:8]}_email.json"
         dados = r.to_dict()
@@ -823,6 +838,7 @@ def construir_parser() -> argparse.ArgumentParser:
         help="consulta DNS, idade e registrador dos domínios envolvidos (só o nome do domínio sai daqui)",
     )
     p.add_argument("--json", action="store_true", help="salva o resultado completo em JSON")
+    p.add_argument("--yara", action="store_true", help="gera e valida uma regra YARA da campanha")
     p.add_argument("-o", "--saida", default="output", help="diretorio de saida (padrao: output)")
     p.add_argument("--exportar-iocs", nargs="*", default=[], choices=["csv", "stix", "misp"])
     p.add_argument("--confianca-minima", choices=["alta", "media", "baixa"], default="media")

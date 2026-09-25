@@ -340,3 +340,58 @@ def test_consulta_recusa_ip():
 
     with pytest.raises(ValueError):
         consultar_dominio("8.8.8.8")
+
+
+# ============================================================
+# Regra YARA do e-mail
+# ============================================================
+
+
+CAMPANHA = """\
+Received: from mx.vitima.com.br (10.0.0.5) by caixa.vitima.com.br; Thu, 27 Jul 2023 07:40:06 +0000
+Received: from mail.golpe.top (unknown [45.13.7.9]) by mx.vitima.com.br; Thu, 27 Jul 2023 07:40:01 +0000
+From: "Microsoft 365" <alerta@conta-segura.top>
+To: fulano@vitima.com.br
+Reply-To: suporte.ms365@gmail.com
+Return-Path: <bounce@disparos.xyz>
+Subject: Sua senha expira hoje - acao necessaria
+Content-Type: text/html
+"""
+
+
+def test_regra_yara_da_campanha(tmp_path):
+    from core.yara_email import gerar_regra_email
+
+    corpo = '<a href="https://login-ms365.top/entrar">Manter senha</a>'
+    eml = _eml(tmp_path, CAMPANHA, corpo)
+    regra = gerar_regra_email(analisar_email(eml))
+    assert regra.valida and not regra.falsos_positivos
+    valores = {c.valor for c in regra.strings_usadas}
+    assert {"suporte.ms365@gmail.com", "conta-segura.top", "disparos.xyz", "login-ms365.top", "45.13.7.9"} <= valores
+    # Nada da vitima: nem o endereco, nem o dominio, nem o servidor dela.
+    assert not any("vitima" in v for v in valores)
+    # Webmail sozinho casaria com metade da caixa de qualquer um.
+    assert "gmail.com" not in valores
+    # Endereco e dominio do mesmo remetente contariam duas vezes.
+    assert "alerta@conta-segura.top" not in valores
+
+
+def test_regra_pega_outra_mensagem_da_mesma_campanha(tmp_path):
+    import yara
+
+    from core.yara_email import gerar_regra_email
+
+    regra = gerar_regra_email(analisar_email(_eml(tmp_path, CAMPANHA, '<a href="https://login-ms365.top/a">x</a>')))
+    irma = CAMPANHA.replace("fulano@vitima.com.br", "ciclano@outra.com").replace("Sua senha expira hoje - acao necessaria", "Verifique sua conta")
+    dados = (textwrap.dedent(irma).strip() + "\r\n\r\n" + '<a href="https://login-ms365.top/b">y</a>').encode()
+    assert yara.compile(source=regra.texto).match(data=dados)
+
+
+def test_sem_material_nao_gera_regra(tmp_path):
+    from core.yara_email import gerar_regra_email
+
+    corpo = base64.b64encode(b'<a href="https://x.top">x</a>').decode()
+    eml = _eml(tmp_path, "From: alguem@gmail.com\nSubject: oi\nContent-Type: text/html\nContent-Transfer-Encoding: base64", corpo)
+    regra = gerar_regra_email(analisar_email(eml))
+    assert not regra.valida
+    assert regra.avisos
