@@ -181,3 +181,70 @@ def test_diamante_mostra_a_reputacao(tmp_path):
     assert "URLhaus: malicioso" in infra["45.13.7.9"]
     assert "ThreatFox: malicioso" in infra["golpe.top"]
     assert any("IClickFix" in p.acao for p in d.pivos)
+
+
+# ============================================================
+# AbuseIPDB
+# ============================================================
+
+
+def _abuseipdb(dados):
+    from enrichment.abuseipdb_client import AbuseIPDBClient
+
+    c = AbuseIPDBClient("chave")
+    pedidos = _respondendo(c, {"data": dados} if dados is not None else None)
+    return c, pedidos
+
+
+def test_abuseipdb_malicioso_com_categorias():
+    c, pedidos = _abuseipdb({
+        "abuseConfidenceScore": 100, "totalReports": 505, "numDistinctUsers": 154, "countryName": "Germany",
+        "countryCode": "DE", "isp": "Tor Exit", "usageType": "Data Center/Web Hosting/Transit", "isTor": True,
+        "reports": [{"categories": [18, 22]}, {"categories": [18]}, {"categories": [7]}],
+    })
+    r = c.consultar("185.220.101.44")
+    assert pedidos[0][0] == "/check"
+    assert pedidos[0][1]["parametros"]["ipAddress"] == "185.220.101.44"
+    assert r.veredito == "malicioso"
+    assert r.tags[0] == "Brute-Force"
+    assert "nó de saída Tor" in r.resumo and "data center" in r.resumo
+    assert r.referencia == "https://www.abuseipdb.com/check/185.220.101.44"
+
+
+def test_abuseipdb_permitido_nao_e_suspeito():
+    c, _ = _abuseipdb({"abuseConfidenceScore": 0, "totalReports": 348, "numDistinctUsers": 147, "isWhitelisted": True,
+                       "countryName": "United States", "isp": "Google LLC", "usageType": "Content Delivery Network"})
+    r = c.consultar("8.8.8.8")
+    assert r.veredito == "sem_registro"
+    assert "lista de permissões" in r.resumo
+
+
+def test_abuseipdb_pontuacao_media_e_sem_relato():
+    c, _ = _abuseipdb({"abuseConfidenceScore": 40, "totalReports": 3, "numDistinctUsers": 2, "isp": "X"})
+    assert c.consultar("45.13.7.9").veredito == "suspeito"
+    c, _ = _abuseipdb({"abuseConfidenceScore": 0, "totalReports": 0, "lastReportedAt": "2023-12-16T02:11:53+00:00",
+                       "countryName": "Germany", "isp": "GHOSTnet GmbH", "usageType": "Data Center/Web Hosting/Transit"})
+    r = c.consultar("89.144.9.87")
+    assert r.veredito == "sem_registro"
+    assert "último em 2023-12-16" in r.resumo and "GHOSTnet" in r.resumo
+
+
+def test_abuseipdb_so_consulta_ip_publico():
+    c, pedidos = _abuseipdb({})
+    assert c.consultar("golpe.top").veredito == "erro"
+    assert c.consultar("10.0.0.5").veredito == "sem_registro"
+    assert pedidos == []
+
+
+def test_diamante_mostra_o_provedor_da_origem(tmp_path):
+    from core.analise_email import analisar_email
+    from core.diamante import diamante_do_email
+
+    eml = tmp_path / "g.eml"
+    eml.write_bytes(b"Received: from x (unknown [89.144.9.87]) by mx.v.com; Thu, 27 Jul 2023 07:40:01 +0000\r\n"
+                    b"From: X <a@golpe.top>\r\nSubject: s\r\n\r\nx")
+    r = analisar_email(eml)
+    rep = [Reputacao("AbuseIPDB", "89.144.9.87", "ip", "sem_registro", detalhes={"provedor": "GHOSTnet GmbH", "pais": "DE"})]
+    d = diamante_do_email(r, reputacao=rep)
+    origem = next(i for i in d.infraestrutura.itens if i.valor == "89.144.9.87")
+    assert "GHOSTnet GmbH (DE)" in origem.descricao

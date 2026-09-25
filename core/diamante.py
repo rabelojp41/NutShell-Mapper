@@ -285,6 +285,14 @@ def diamante_do_email(r: Any, consultas: list[Any] | None = None, reputacao: lis
     if r.origem is not None:
         helo = f" (HELO {r.origem.de})" if r.origem.de and r.origem.de != r.origem.ip else ""
         extra = f" · {', '.join(rep[r.origem.ip.lower()])}" if r.origem.ip.lower() in rep else ""
+        # Quem hospeda o IP, mesmo sem relato de abuso: "data center na
+        # Alemanha" como origem de um e-mail que diz vir de um banco ja conta.
+        for x in reputacao or []:
+            dx = x if isinstance(x, dict) else x.to_dict()
+            det = dx.get("detalhes") or {}
+            if dx["fonte"] == "AbuseIPDB" and dx["indicador"] == r.origem.ip and det.get("provedor"):
+                extra += f" · {det['provedor']} ({det.get('pais') or '?'})"
+                break
         inf.itens.append(ItemDiamante(r.origem.ip, f"servidor que disparou a mensagem{helo}{extra}", "tipo 1"))
     vistos: set[str] = set()
 

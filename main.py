@@ -500,6 +500,9 @@ def _imprimir_reputacao(reputacao) -> None:
                 print(f"  {'':27}tags: {', '.join(x.tags[:8])}")
         elif x.veredito == "erro":
             print(f"  {'':27}{x.erro}")
+        elif x.detalhes.get("provedor"):
+            # Sem relato, mas com contexto (quem hospeda o IP): vale mostrar.
+            print(f"  {'':27}{x.resumo}")
     encontrados = sum(1 for x in reputacao if x.encontrado)
     print(f"\n  {encontrados} registro(s) em bases de inteligência. \"Sem registro\" não é \"limpo\": "
           "infraestrutura de phishing costuma viver dias e nunca chegar a base nenhuma.")

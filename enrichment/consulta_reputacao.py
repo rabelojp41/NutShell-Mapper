@@ -34,11 +34,12 @@ class Fonte:
 
 def fontes_disponiveis() -> list[Fonte]:
     """As fontes, na ordem em que aparecem. Criar devolve None sem chave."""
-    from enrichment import abusech_client
+    from enrichment import abusech_client, abuseipdb_client
 
     return [
         Fonte("URLhaus", frozenset({"ip", "dominio", "url"}), abusech_client.criar_urlhaus),
         Fonte("ThreatFox", frozenset({"ip", "dominio", "url", "hash"}), abusech_client.criar_threatfox),
+        Fonte("AbuseIPDB", frozenset({"ip"}), abuseipdb_client.criar),
     ]
 
 
