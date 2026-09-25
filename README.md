@@ -67,7 +67,7 @@ e-mail (.eml) -> cabecalhos, caminho, SPF/DKIM/DMARC, links, anexos -> sinais
 | `enrichment/shodan_client.py` | portas e servicos dos IPs publicos extraidos |
 | `enrichment/nvd_client.py` | busca o vetor CVSS oficial de CVE citada pelo artefato |
 | `enrichment/malwarebazaar_client.py` | familia, tags, metodo de entrega, regras YARA da comunidade; download opcional de amostra |
-| `enrichment/abusech_client.py` | URLhaus (distribuicao de malware) e ThreatFox (IOCs com familia e confianca) |
+| `enrichment/abusech_client.py` | URLhaus (distribuicao de malware), ThreatFox (IOCs com familia e confianca), YARAify (regras da comunidade por hash) e o MalwareBazaar no formato de reputacao |
 | `enrichment/abuseipdb_client.py` | reputacao de IP por relatos da comunidade, com provedor, pais e tipo de uso |
 | `enrichment/otx_client.py` | pulses do OTX AlienVault que citam o indicador |
 | `enrichment/urlscan_client.py` | busca de varreduras no URLScan.io e varredura ativa opcional |
@@ -388,6 +388,11 @@ ATT&CK e a validacao que evita falso positivo em dominio conhecido) e
 URLScan.io (varreduras que outras pessoas ja fizeram: a pagina que respondeu,
 provedor, redirecionamento e os outros sites que carregam recursos do
 dominio - no ClickFix, os sites comprometidos que injetam o script).
+
+Para hashes (anexos do e-mail, artefato analisado), tambem o **MalwareBazaar**
+(familia, metodo de entrega) e o **YARAify** (regras YARA da comunidade e
+assinaturas do ClamAV que ja casaram com o arquivo - a segunda opiniao sobre
+a regra que a ferramenta gera).
 
 O **Censys** completa o retrato do IP: servicos expostos (porta, protocolo,
 software, certificado), sistema autonomo, localizacao, DNS reverso e o

@@ -428,3 +428,49 @@ def test_recomendacao_de_notificar_o_provedor(tmp_path):
                      detalhes={"organizacao": "GHOSTnet GmbH", "contato_de_abuso": ["noc@ghostnet.de"]})]
     acoes = [a for a, _ in recomendacoes(r, reputacao=rep)]
     assert any("GHOSTnet GmbH" in a and "noc@ghostnet.de" in a for a in acoes)
+
+
+# ============================================================
+# YARAify e MalwareBazaar
+# ============================================================
+
+
+def test_yaraify_regras_da_comunidade():
+    from enrichment.abusech_client import YARAifyClient
+
+    c = YARAifyClient("chave")
+    pedidos = _respondendo(c, {"query_status": "ok", "data": {
+        "metadata": {"sightings": 5, "first_seen": "2026-09-25 17:45:18 UTC", "file_type_mime": "application/x-executable"},
+        "tasks": [{"static_results": [{"rule_name": "ELF_Mirai"}, {"rule_name": "SUSP_UPX"}], "clamav_results": ["Unix.Trojan.Mirai"]},
+                  {"static_results": [{"rule_name": "ELF_Mirai"}]}],
+    }})
+    r = c.consultar("a" * 64)
+    assert pedidos[0][1]["corpo_json"] == {"query": "lookup_hash", "search_term": "a" * 64}
+    assert r.veredito == "malicioso"
+    assert r.detalhes["regras_yara"] == ["ELF_Mirai", "SUSP_UPX"]
+    assert r.detalhes["clamav"] == ["Unix.Trojan.Mirai"]
+    assert c.consultar("golpe.top").veredito == "erro"
+
+
+def test_yaraify_conhecido_sem_regra_e_contexto():
+    from enrichment.abusech_client import YARAifyClient
+
+    c = YARAifyClient("chave")
+    _respondendo(c, {"query_status": "ok", "data": {"metadata": {"sightings": 1}, "tasks": [{"static_results": []}]}})
+    assert c.consultar("b" * 64).veredito == "contexto"
+
+
+def test_malwarebazaar_no_formato_de_reputacao():
+    from enrichment.abusech_client import _MalwareBazaarComoReputacao
+    from enrichment.malwarebazaar_client import ResultadoMalwareBazaar
+
+    class Cliente:
+        def consultar_hash(self, valor):
+            return ResultadoMalwareBazaar(indicador=valor, consultado=True, encontrado=True, familia="Mirai",
+                                          tags=["elf", "mirai"], metodo_de_entrega="web_download",
+                                          primeira_vez_visto="2026-09-25 10:00:00", regras_yara=["ELF_Mirai"])
+
+    r = _MalwareBazaarComoReputacao(Cliente()).consultar("c" * 64)
+    assert r.veredito == "malicioso" and r.detalhes["familias"] == ["Mirai"]
+    assert "entregue por web_download" in r.resumo
+    assert r.referencia == f"https://bazaar.abuse.ch/sample/{'c' * 64}/"

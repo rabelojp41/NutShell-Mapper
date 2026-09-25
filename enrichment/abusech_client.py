@@ -144,3 +144,116 @@ def criar_threatfox(config=None) -> ThreatFoxClient | None:
     if not cfg.enable_enrichment or not cfg.malwarebazaar_api_key:
         return None
     return ThreatFoxClient(cfg.malwarebazaar_api_key, timeout=cfg.http_timeout)
+
+
+# ============================================================
+# YARAify
+# ============================================================
+
+URL_YARAIFY = "https://yaraify-api.abuse.ch/api/v1"
+
+
+class YARAifyClient(ClienteBase):
+    """
+    YARAify: quais regras YARA da comunidade (e assinaturas do ClamAV) ja
+    casaram com um arquivo, pelo hash. E a segunda opiniao sobre a regra
+    que a ferramenta gera: se regras publicas de uma familia casam com a
+    amostra, ha nome e autor para comparar.
+    """
+
+    nome = "YARAify"
+    url_base = URL_YARAIFY
+
+    def __init__(self, api_key: str, timeout: int = 30):
+        super().__init__(api_key, timeout=timeout, rate_limit_por_minuto=60)
+        if api_key:
+            self.sessao.headers["Auth-Key"] = api_key
+
+    def consultar(self, valor: str) -> Reputacao:
+        if _tipo(valor) != "hash":
+            return falha(self.nome, valor, _tipo(valor), "o YARAify só é consultado por hash")
+        resposta = self._requisitar("/", metodo="POST", corpo_json={"query": "lookup_hash", "search_term": valor})
+        if resposta.erro:
+            return falha(self.nome, valor, "hash", resposta.erro)
+        d = resposta.dados
+        if d.get("query_status") != "ok" or not isinstance(d.get("data"), dict):
+            return Reputacao(self.nome, valor, "hash", "sem_registro", resumo="arquivo desconhecido pelo YARAify")
+        dados = d["data"]
+        meta = dados.get("metadata") or {}
+        regras, clamav = [], []
+        for tarefa in dados.get("tasks") or []:
+            for x in tarefa.get("static_results") or []:
+                nome = x.get("rule_name") if isinstance(x, dict) else str(x)
+                if nome and nome not in regras:
+                    regras.append(nome)
+            for x in tarefa.get("clamav_results") or []:
+                nome = x if isinstance(x, str) else (x.get("signature") or x.get("name") if isinstance(x, dict) else "")
+                if nome and nome not in clamav:
+                    clamav.append(nome)
+        partes = [f"visto {meta.get('sightings') or 1} vez(es), primeira em {(meta.get('first_seen') or '?')[:10]}"]
+        if regras:
+            partes.insert(0, f"{len(regras)} regra(s) YARA da comunidade: " + ", ".join(regras[:4]))
+        if clamav:
+            partes.insert(0, "ClamAV: " + ", ".join(clamav[:3]))
+        return Reputacao(
+            self.nome, valor, "hash", "malicioso" if regras or clamav else "contexto", resumo=" · ".join(partes),
+            tags=(clamav + regras)[:8],
+            detalhes={"regras_yara": regras, "clamav": clamav, "tipo_mime": meta.get("file_type_mime"),
+                      "tamanho": meta.get("file_size"), "primeira_vez": meta.get("first_seen"),
+                      "imphash": meta.get("imphash"), "tlsh": meta.get("tlsh")},
+            referencia=f"https://yaraify.abuse.ch/sample/{valor}/",
+        )
+
+
+def criar_yaraify(config=None) -> YARAifyClient | None:
+    from config.settings import CONFIG
+
+    cfg = config or CONFIG
+    if not cfg.enable_enrichment or not cfg.malwarebazaar_api_key:
+        return None
+    return YARAifyClient(cfg.malwarebazaar_api_key, timeout=cfg.http_timeout)
+
+
+# ============================================================
+# MalwareBazaar no formato de reputacao
+# ============================================================
+
+
+class _MalwareBazaarComoReputacao:
+    """O client do MalwareBazaar ja existe; aqui so muda o formato da resposta."""
+
+    nome = "MalwareBazaar"
+
+    def __init__(self, cliente):
+        self._cliente = cliente
+
+    def consultar(self, valor: str) -> Reputacao:
+        r = self._cliente.consultar_hash(valor)
+        if r.erro:
+            return falha(self.nome, valor, "hash", r.erro)
+        if not r.encontrado:
+            return Reputacao(self.nome, valor, "hash", "sem_registro", resumo="não consta no MalwareBazaar")
+        partes = [r.familia or "sem rótulo de família"]
+        if r.metodo_de_entrega:
+            partes.append(f"entregue por {r.metodo_de_entrega}")
+        if r.primeira_vez_visto:
+            partes.append(f"primeira vez em {r.primeira_vez_visto[:10]}")
+        if r.regras_yara:
+            partes.append(f"{len(r.regras_yara)} regra(s) YARA da comunidade")
+        return Reputacao(
+            self.nome, valor, "hash", "malicioso", resumo=" · ".join(partes), tags=list(r.tags)[:8],
+            detalhes={"familias": [r.familia] if r.familia else [], "regras_yara": r.regras_yara[:10],
+                      "metodo_de_entrega": r.metodo_de_entrega, "nome_do_arquivo": r.nome_do_arquivo,
+                      "primeira_vez": r.primeira_vez_visto},
+            referencia=f"https://bazaar.abuse.ch/sample/{valor}/",
+        )
+
+    def fechar(self) -> None:
+        self._cliente.fechar()
+
+
+def criar_malwarebazaar(config=None):
+    from enrichment import malwarebazaar_client
+
+    cliente = malwarebazaar_client.criar(config)
+    return _MalwareBazaarComoReputacao(cliente) if cliente is not None else None
