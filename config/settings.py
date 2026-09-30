@@ -76,6 +76,10 @@ def _chave(nome: str) -> str:
     401 confuso da API em vez de "a chave nao foi configurada".
     """
     valor = _texto(nome)
+    # "CHAVE=    # link" (linha do .env.example sem valor): o python-dotenv
+    # entrega o comentario como se fosse o valor.
+    if valor.startswith("#"):
+        return ""
     return "" if valor.lower() in PLACEHOLDERS else valor
 
 

@@ -1,6 +1,11 @@
 # ===== Segredos =====
 .env
 config/.env
+# Qualquer variante do .env (temporario da gravacao pela interface, copia
+# de backup): so o modelo sem chave vai para o repositorio.
+.env.*
+config/.env.*
+!config/.env.example
 *.key
 *.pem
 

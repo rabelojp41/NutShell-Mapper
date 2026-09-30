@@ -66,6 +66,8 @@ HOSTS_PERMITIDOS = frozenset(
         "yaraify.abuse.ch",
         "malpedia.caad.fkie.fraunhofer.de",
         "www.shodan.io",
+        "account.shodan.io",
+        "auth.abuse.ch",
         "www.abuseipdb.com",
         "otx.alienvault.com",
         "urlscan.io",
@@ -289,6 +291,51 @@ class Ponte(QObject):
                 "analisando": self._executor.rodando,
             }
         )
+
+    # ------------------------------------------------------------
+    # Chaves de API
+    # ------------------------------------------------------------
+    #
+    # A pagina manda a chave UMA vez, para gravar, e nunca recebe de volta:
+    # nem o valor nem uma versao mascarada. O que volta e so o estado.
+
+    @Slot(result=str)
+    def chaves(self) -> str:
+        from config import chaves
+
+        return para_json({"ok": True, **chaves.estado()})
+
+    @Slot(str, str, result=str)
+    def salvarChave(self, variavel: str, valor: str) -> str:
+        from config import chaves
+
+        try:
+            return para_json({"ok": True, **chaves.salvar(variavel, valor)})
+        except chaves.ErroDeChave as erro:
+            return _erro(str(erro))
+        except OSError as erro:
+            return _erro(f"não foi possível gravar o config/.env: {erro.strerror or erro}")
+
+    @Slot(str, result=str)
+    def removerChave(self, variavel: str) -> str:
+        from config import chaves
+
+        try:
+            return para_json({"ok": True, **chaves.remover(variavel)})
+        except chaves.ErroDeChave as erro:
+            return _erro(str(erro))
+        except OSError as erro:
+            return _erro(f"não foi possível gravar o config/.env: {erro.strerror or erro}")
+
+    @Slot(str)
+    def testarChave(self, variavel: str) -> None:
+        """Pergunta ao servico se a chave e aceita. Rede: em segundo plano."""
+        from config import chaves
+
+        if variavel not in chaves.POR_VARIAVEL:
+            self.tarefaConcluida.emit(para_json({"id": "chave", "ok": False, "erro": "variável desconhecida"}))
+            return
+        self._em_segundo_plano("chave", lambda: chaves.testar(variavel))
 
     @Slot(str)
     def verificarOllama(self, modelo: str) -> None:

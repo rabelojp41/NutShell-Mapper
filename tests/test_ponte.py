@@ -618,3 +618,29 @@ def test_urlscan_so_varre_link_do_email(ponte):
     ponte.tarefaConcluida.connect(respostas.append)
     ponte.varrerNoUrlscan("https://qualquer-coisa.example/")
     assert json.loads(respostas[0]) == {"id": "urlscan", "ok": False, "erro": "a URL não está no e-mail analisado"}
+
+
+def test_ponte_grava_chave_sem_devolver_o_valor(ponte, tmp_path, monkeypatch):
+    import os
+
+    from config import settings
+
+    antes = dict(os.environ)
+    try:
+        caminho = tmp_path / ".env"
+        caminho.write_text("VIRUSTOTAL_API_KEY=\n", encoding="utf-8")
+        monkeypatch.setattr(settings, "CAMINHO_ENV", caminho)
+        monkeypatch.setattr(settings, "CONFIG", settings.Configuracoes())
+        segredo = "f0e1d2c3b4a5968778695a4b3c2d1e0f"
+        resposta = ponte.salvarChave("VIRUSTOTAL_API_KEY", segredo)
+        assert json.loads(resposta)["ok"]
+        assert segredo not in resposta
+        assert segredo not in ponte.chaves() and segredo not in ponte.estado()
+        assert json.loads(ponte.estado())["chaves"]["virustotal"] is True
+        # Nome fora do catalogo e valor com quebra de linha nao entram.
+        assert not json.loads(ponte.salvarChave("ENABLE_ENRICHMENT", "falso12345678"))["ok"]
+        assert not json.loads(ponte.salvarChave("SHODAN_API_KEY", "abc12345678\nENABLE_ENRICHMENT=false"))["ok"]
+        assert "ENABLE_ENRICHMENT" not in caminho.read_text(encoding="utf-8")
+    finally:
+        os.environ.clear()
+        os.environ.update(antes)

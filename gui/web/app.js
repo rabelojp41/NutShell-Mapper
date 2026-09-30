@@ -97,6 +97,8 @@ const ICONES = {
   lista: ["M9 6h11", "M9 12h11", "M9 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
   volume: ["M4 10v4h3l5 4V6L7 10z", "M16 9.5a3.5 3.5 0 0 1 0 5"],
   carta: ["M4 6h16v12H4z", "M4 7l8 6 8-6"],
+  olho: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  olhoFechado: ["M3 3l18 18", "M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2", "M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6", "M9.9 9.9a3 3 0 0 0 4.2 4.2"],
 };
 
 function icone(nome) {
@@ -238,6 +240,9 @@ const estado = {
   dominio: { valor: "", subdominios: true, carregando: false, dados: null, erro: "", filtro: "" },
   attackAtualizando: false,
   menuAberto: null,
+  // Chaves de API. O rascunho e o que o analista esta digitando: fica so
+  // na memoria da pagina ate ser gravado, e e apagado logo em seguida.
+  chaves: { dados: null, rascunho: {}, visivel: {}, testes: {}, salvando: null },
 };
 
 function ir(vista) {
@@ -734,6 +739,7 @@ function verificarOllama() {
 tarefas.ollama = (t) => {
   estado.verificandoOllama = false;
   estado.ollama = t.ok ? t.dados : { estado: "parado", versao: "", modelos: [], modelo_pedido: estado.opcoes.modelo_ia };
+  etapaDoOllama();
   if (["nova", "config"].includes(estado.vista)) renderizar();
 };
 
@@ -1772,19 +1778,12 @@ VISTAS.config = () => {
   return h(
     "div",
     { class: "pagina estreita" },
-    cabecalho("Configuração", "Estado do ambiente. As chaves ficam em config/.env, que o Git ignora: elas nunca aparecem aqui nem vão para o repositório."),
-    h("div", { class: "secao-titulo" }, "Chaves de API"),
-    h("div", { class: "opcoes" },
-      linhaStatus("VirusTotal", amb.chaves.virustotal, "Configurada", "Não configurada"),
-      linhaStatus("Shodan", amb.chaves.shodan, "Configurada", "Não configurada"),
-      linhaStatus("MalwareBazaar", amb.chaves.malwarebazaar, "Configurada", "Não configurada"),
+    cabecalho("Configuração", "Estado do ambiente e chaves de API."),
+    h("div", { class: "secao-titulo secao-com-acao" }, "Chaves de API",
+      h("button", { class: "btn btn-pequeno", disabled: !estado.chaves.dados?.configuradas, onclick: testarTodasAsChaves }, icone("recarregar"), "Testar todas")),
+    painelDeChaves(),
+    h("div", { class: "opcoes mt-16" },
       linhaStatus("Consultas externas no .env", amb.enriquecimento_habilitado, "Habilitadas", "Desabilitadas (ENABLE_ENRICHMENT)")),
-    // Sem .env mas com chave: ela veio de variavel de ambiente (CI, shell).
-    // Mandar "copie o .env.example" nesse caso seria orientacao errada.
-    !amb.env_encontrado && h("div", { class: "mt-16" },
-      Object.values(amb.chaves).some(Boolean)
-        ? nota("info", h("strong", {}, "config/.env não encontrado. "), "As chaves configuradas vieram de variáveis de ambiente.")
-        : nota("aviso", h("strong", {}, "config/.env não encontrado. "), "Copie config/.env.example para config/.env e preencha as chaves que tiver.")),
 
     h("div", { class: "secao-titulo mt-24" }, "IA local"),
     h("div", { class: "opcoes" },
@@ -1811,6 +1810,312 @@ VISTAS.config = () => {
     h("p", { class: "t3 mt-24", style: "font-size:12px" }, "Nut-Shell Mapper · análise estática de artefatos e threat intelligence. O arquivo analisado é lido, nunca executado."),
   );
 };
+
+// ============================================================
+// Chaves de API
+// ============================================================
+//
+// A chave vai da pagina para a ponte uma unica vez, ao gravar, e nunca faz
+// o caminho de volta: o que a ponte devolve e so "configurada" ou nao. O
+// campo comeca sempre vazio, mesmo com a chave gravada.
+
+const ESTADO_DO_TESTE = {
+  true: ["ok", "Aceita"],
+  false: ["rejeitada", "Rejeitada"],
+  null: ["falha", "Não verificada"],
+};
+
+function painelDeChaves() {
+  const dados = estado.chaves.dados;
+  if (!dados) return h("div", { class: "opcoes" }, h("div", { class: "opcao" }, h("span", { class: "t3" }, "Lendo o config/.env…")));
+  return h("div", { class: "chaves" },
+    dados.chaves.map(cartaoChave),
+    h("p", { class: "chaves-rodape" }, icone("escudo"),
+      h("span", {}, "Gravadas em ", h("span", { class: "mono" }, "config/.env"),
+        ", que o Git ignora. A chave nunca volta para a tela, nem mascarada.")));
+}
+
+function cartaoChave(k) {
+  const c = estado.chaves;
+  const teste = c.testes[k.variavel];
+  const rascunho = c.rascunho[k.variavel] || "";
+  const salvando = c.salvando === k.variavel;
+
+  let status;
+  if (teste?.testando) status = h("span", { class: "status-servico verificando" }, "Testando…");
+  else if (teste && "valida" in teste) {
+    const [classe, rotulo] = ESTADO_DO_TESTE[teste.valida];
+    status = h("span", { class: `status-servico ${classe}` }, rotulo);
+  } else if (k.configurada) status = h("span", { class: "status-servico ok" }, "Configurada");
+  else status = h("span", { class: "status-servico falha" }, "Não configurada");
+
+  const entrada = h("input", {
+    class: "campo mono chave-campo",
+    type: c.visivel[k.variavel] ? "text" : "password",
+    value: rascunho,
+    placeholder: k.configurada ? "•••••••••••• gravada · cole outra para substituir" : "Cole a chave aqui",
+    autocomplete: "off",
+    spellcheck: "false",
+    "aria-label": `Chave do ${k.nome}`,
+    dataset: { variavel: k.variavel },
+    disabled: salvando,
+  });
+  // Com a chave ja gravada, o botao so ganha destaque quando ha algo novo
+  // para gravar: oito botoes roxos apagados poluiriam a tela.
+  const classeDoBotao = (texto) => `btn ${texto.trim() || !k.configurada ? "btn-primario" : ""}`;
+  const botaoSalvar = h("button", { class: classeDoBotao(rascunho), disabled: salvando || !rascunho.trim(), onclick: () => salvarChave(k.variavel) },
+    salvando ? "Gravando…" : k.configurada ? "Substituir" : "Salvar");
+  // Digitar nao redesenha a tela (perderia o foco): so liga o botao.
+  entrada.addEventListener("input", () => {
+    c.rascunho[k.variavel] = entrada.value;
+    botaoSalvar.disabled = !entrada.value.trim();
+    botaoSalvar.className = classeDoBotao(entrada.value);
+  });
+  entrada.addEventListener("keydown", (e) => { if (e.key === "Enter" && entrada.value.trim()) salvarChave(k.variavel); });
+
+  return h("div", { class: `chave-cartao ${k.configurada ? "configurada" : ""}` },
+    h("div", { class: "chave-topo" },
+      h("div", { class: "chave-texto" },
+        h("div", { class: "chave-nome" }, k.nome, !k.gratuita && h("span", { class: "chave-etiqueta" }, "paga")),
+        h("div", { class: "chave-desc" }, k.descricao),
+        k.libera.length > 1 && h("div", { class: "chave-libera" }, k.libera.map((f) => h("span", {}, f)))),
+      status),
+    h("div", { class: "chave-linha" },
+      h("div", { class: "chave-entrada" }, entrada,
+        h("button", { class: "btn-icone", type: "button", title: c.visivel[k.variavel] ? "Ocultar" : "Mostrar o que estou digitando",
+          onclick: () => { c.visivel[k.variavel] = !c.visivel[k.variavel]; redesenharChaves(); } },
+          icone(c.visivel[k.variavel] ? "olhoFechado" : "olho"))),
+      botaoSalvar),
+    h("div", { class: "chave-acoes" },
+      linkExterno(k.onde_obter, "Obter chave"),
+      k.configurada && h("button", { class: "btn btn-fantasma btn-pequeno", disabled: teste?.testando, onclick: () => testarChave(k.variavel) }, icone("recarregar"), "Testar"),
+      k.configurada && k.origem === "arquivo" && h("button", { class: "btn btn-fantasma btn-pequeno", onclick: () => removerChave(k) }, icone("x"), "Remover"),
+      teste?.mensagem
+        ? h("span", { class: `chave-msg ${teste.valida === false ? "falha" : ""}` }, teste.mensagem)
+        : h("span", { class: "chave-msg" }, k.origem === "ambiente" ? "Vem de uma variável de ambiente do sistema, que tem precedência sobre o .env." : k.observacao)),
+  );
+}
+
+// Redesenha onde as chaves aparecem, sem roubar o foco de quem esta
+// digitando em outro cartao.
+function redesenharChaves() {
+  const ativo = document.activeElement;
+  const variavel = ativo?.dataset?.variavel;
+  const cursor = variavel ? [ativo.selectionStart, ativo.selectionEnd] : null;
+  const lista = document.querySelector(".abertura-chaves-lista");
+  const rolagem = lista ? lista.scrollTop : 0;
+  if (abertura.aberta) {
+    renderizarAbertura();
+    const nova = document.querySelector(".abertura-chaves-lista");
+    if (nova) nova.scrollTop = rolagem;
+  }
+  if (estado.vista === "config") renderizar();
+  if (variavel) {
+    const novo = document.querySelector(`.chave-campo[data-variavel="${variavel}"]`);
+    if (novo) { novo.focus(); try { novo.setSelectionRange(...cursor); } catch { /* campo senha */ } }
+  }
+}
+
+async function carregarChaves() {
+  const r = await chamar("chaves");
+  if (r?.ok) estado.chaves.dados = r;
+  return r;
+}
+
+async function salvarChave(variavel) {
+  const c = estado.chaves;
+  const valor = (c.rascunho[variavel] || "").trim();
+  if (!valor || c.salvando) return;
+  c.salvando = variavel;
+  redesenharChaves();
+  const r = await chamar("salvarChave", variavel, valor);
+  c.salvando = null;
+  if (!r?.ok) {
+    c.testes[variavel] = { valida: false, mensagem: r?.erro || "não gravada" };
+    redesenharChaves();
+    return;
+  }
+  delete c.rascunho[variavel];
+  c.visivel[variavel] = false;
+  c.dados = r;
+  estado.ambiente = await chamar("estado");
+  renderizarNav();
+  // Gravou: ja confere com o servico, para o analista saber se colou certo.
+  testarChave(variavel);
+}
+
+async function removerChave(k) {
+  const ok = await confirmar({
+    titulo: `Remover a chave do ${k.nome}?`,
+    paragrafos: [`Ela é apagada do config/.env e ${k.libera.join(", ")} deixa de ser consultado.`, "Para voltar, é só colar a chave de novo."],
+    botao: "Remover",
+    perigo: true,
+  });
+  if (!ok) return;
+  const r = await chamar("removerChave", k.variavel);
+  if (!r?.ok) return avisar("erro", "Chave não removida", r?.erro || "");
+  delete estado.chaves.testes[k.variavel];
+  estado.chaves.dados = r;
+  estado.ambiente = await chamar("estado");
+  renderizarNav();
+  redesenharChaves();
+}
+
+function testarChave(variavel) {
+  estado.chaves.testes[variavel] = { testando: true };
+  redesenharChaves();
+  ponte.testarChave(variavel);
+}
+
+function testarTodasAsChaves() {
+  for (const k of estado.chaves.dados?.chaves || []) if (k.configurada) testarChave(k.variavel);
+}
+
+tarefas.chave = (t) => {
+  if (t.ok) {
+    estado.chaves.testes[t.dados.variavel] = t.dados;
+  } else {
+    for (const [v, teste] of Object.entries(estado.chaves.testes)) {
+      if (teste.testando) estado.chaves.testes[v] = { valida: null, mensagem: t.erro || "falha no teste" };
+    }
+  }
+  redesenharChaves();
+};
+
+// ============================================================
+// Abertura
+// ============================================================
+//
+// Uma tela de carregamento de verdade: cada linha e uma checagem real do
+// ambiente, nao uma animacao de enfeite. Com chave configurada ela some
+// sozinha; na primeira vez (nenhuma chave) ela para e mostra os campos.
+
+const abertura = {
+  aberta: true,
+  fase: "carregando",     // carregando | chaves | saindo
+  etapas: [],
+  segurar: false,         // o analista pediu para configurar: nao sai sozinha
+  inicio: performance.now(),
+};
+
+function etapa(id, rotulo, estadoEtapa = "pendente", detalhe = "") {
+  const existente = abertura.etapas.find((e) => e.id === id);
+  if (existente) Object.assign(existente, { rotulo, estado: estadoEtapa, detalhe });
+  else abertura.etapas.push({ id, rotulo, estado: estadoEtapa, detalhe });
+  if (abertura.aberta) renderizarAbertura();
+}
+
+function vinil() {
+  const capa = albumDoDisco()?.capa;
+  return h("div", { class: "abertura-vinil" },
+    h("div", { class: "abertura-vinil-rotulo" }, capa ? h("img", { src: capa, alt: "", draggable: "false" }) : null));
+}
+
+function renderizarAbertura() {
+  const raiz = document.getElementById("abertura");
+  const cartao = limpar(document.getElementById("abertura-cartao"));
+  raiz.classList.toggle("com-chaves", abertura.fase === "chaves");
+  const feitas = abertura.etapas.filter((e) => e.estado !== "pendente").length;
+  const total = Math.max(abertura.etapas.length, 6);
+  const dados = estado.chaves.dados;
+
+  cartao.appendChild(h("div", { class: "abertura-marca" },
+    vinil(),
+    h("div", {},
+      h("h1", { class: "abertura-titulo" }, "Nut-Shell Mapper"),
+      h("p", { class: "abertura-sub" }, "Artefatos, e-mail e threat intelligence"))));
+
+  if (abertura.fase === "chaves") {
+    const primeiraVez = dados && dados.configuradas === 0;
+    cartao.appendChild(h("div", { class: "abertura-chaves" },
+      h("div", { class: "abertura-chaves-cabeca" },
+        h("div", {},
+          h("h2", {}, primeiraVez ? "Vamos configurar as chaves" : "Chaves de API"),
+          h("p", {}, primeiraVez
+            ? "Cole as que você tiver. Todas são opcionais: a análise estática e a de e-mail funcionam sem nenhuma, só as consultas externas ficam de fora."
+            : `${dados?.configuradas ?? 0} de ${dados?.total ?? 0} configuradas. Cada chave é testada com o serviço assim que você salva.`)),
+        dados?.configuradas ? h("button", { class: "btn btn-pequeno", onclick: testarTodasAsChaves }, icone("recarregar"), "Testar todas") : null),
+      h("div", { class: "abertura-chaves-lista" }, painelDeChaves())));
+    cartao.appendChild(h("div", { class: "abertura-acoes" },
+      h("button", { class: "btn btn-primario", onclick: fecharAbertura }, primeiraVez ? "Pular por agora" : "Concluir", icone("seta"))));
+    return;
+  }
+
+  cartao.appendChild(h("ul", { class: "abertura-etapas" },
+    abertura.etapas.map((e) => h("li", { class: `abertura-etapa ${e.estado}` },
+      h("span", { class: "abertura-etapa-icone" }, e.estado === "ok" ? icone("ok") : e.estado === "aviso" ? icone("alerta") : null),
+      h("span", { class: "abertura-etapa-rotulo" }, e.rotulo),
+      h("span", { class: "abertura-etapa-detalhe" }, e.detalhe)))));
+  cartao.appendChild(h("div", { class: "abertura-barra" }, h("span", { style: `width:${Math.round((feitas / total) * 100)}%` })));
+  cartao.appendChild(h("div", { class: "abertura-acoes" },
+    h("button", { class: "btn btn-fantasma", disabled: !dados, onclick: () => { abertura.segurar = true; abertura.fase = "chaves"; renderizarAbertura(); } },
+      icone("chave"), "Configurar chaves"),
+    h("button", { class: "btn btn-primario", onclick: fecharAbertura }, "Entrar", icone("seta"))));
+}
+
+function fecharAbertura() {
+  if (!abertura.aberta) return;
+  abertura.aberta = false;
+  const raiz = document.getElementById("abertura");
+  raiz.classList.add("saindo");
+  setTimeout(() => raiz.remove(), 450);
+  // Chaves mudaram na abertura: a tela de baixo precisa refletir.
+  renderizar();
+}
+
+// Pausa curta entre as checagens: rapidas demais, viram um piscar.
+const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function rodarAbertura() {
+  etapa("ponte", "Ponte com o Python", "ok", "conectada");
+  await pausa(160);
+
+  etapa("config", "Configuração");
+  const amb = estado.ambiente;
+  etapa("config", "Configuração", amb.env_encontrado ? "ok" : "aviso", amb.env_encontrado ? "config/.env" : "sem config/.env");
+  await pausa(160);
+
+  etapa("chaves", "Chaves de API");
+  const c = await carregarChaves();
+  etapa("chaves", "Chaves de API", c?.configuradas ? "ok" : "aviso", c ? `${c.configuradas} de ${c.total} configuradas` : "não lidas");
+  await pausa(160);
+
+  etapa("fontes", "Fontes de reputação", amb.fontes_de_reputacao?.length ? "ok" : "aviso",
+    amb.fontes_de_reputacao?.length ? `${amb.fontes_de_reputacao.length} prontas` : "nenhuma");
+  await pausa(160);
+
+  etapa("attack", "MITRE ATT&CK", amb.attack.em_cache ? "ok" : "aviso", amb.attack.em_cache ? "em cache" : "não baixado");
+  await pausa(160);
+
+  etapa("ollama", "IA local", "pendente", "verificando o Ollama…");
+  etapa("disco", "Toca-discos", disco.catalogo?.albuns?.length ? "ok" : "aviso",
+    albumDoDisco()?.nome || (disco.catalogo?.albuns?.length ? "pronto" : "sem álbum em midia/"));
+
+  // Primeira vez: nenhuma chave. Para aqui e mostra os campos.
+  if (c && c.configuradas === 0) {
+    await pausa(500);
+    abertura.fase = "chaves";
+    renderizarAbertura();
+    return;
+  }
+  // O Ollama pode levar ate 10 s se estiver fechado: espera um pouco, e o
+  // resto da checagem continua em segundo plano.
+  const limite = performance.now() + 2500;
+  while (!estado.ollama && performance.now() < limite) await pausa(100);
+  if (!estado.ollama) etapa("ollama", "IA local", "aviso", "continua verificando em segundo plano");
+  await pausa(700);
+  if (!abertura.segurar) fecharAbertura();
+}
+
+function etapaDoOllama() {
+  if (!abertura.aberta) return;
+  const d = estado.ollama;
+  if (!d) return;
+  const pronto = d.estado === "pronto";
+  etapa("ollama", "IA local", pronto ? "ok" : "aviso",
+    pronto ? (d.modelos.includes(estado.opcoes.modelo_ia) ? estado.opcoes.modelo_ia : "Ollama pronto")
+      : { nao_instalado: "Ollama não instalado", parado: "Ollama fechado", sem_modelo: "modelo não baixado" }[d.estado] || "indisponível");
+}
 
 function atualizarAttack() {
   estado.attackAtualizando = true;
@@ -2970,11 +3275,11 @@ function renderizarListaDoDisco() {
 
 const MOSCAS = 5;
 
-function soltarMoscas() {
+function soltarMoscas(idDoCampo = "moscas", quantidade = MOSCAS) {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const campo = document.getElementById("moscas");
+  const campo = document.getElementById(idDoCampo);
   const sorteio = (min, max) => min + Math.random() * (max - min);
-  const moscas = Array.from({ length: MOSCAS }, () => {
+  const moscas = Array.from({ length: quantidade }, () => {
     const el = h("div", { class: "mosca" }, h("i"), h("i"));
     campo.appendChild(el);
     return {
@@ -2990,6 +3295,8 @@ function soltarMoscas() {
 
   let antes = performance.now();
   function passo(agora) {
+    // Campo removido (a abertura saiu): as moscas dele param de voar.
+    if (!campo.isConnected) return;
     const dt = Math.min(50, agora - antes);
     antes = agora;
     const largura = campo.clientWidth;
@@ -3033,6 +3340,8 @@ function conectar() {
   simbolo.appendChild(icone("disco"));
   renderizarRodape();
   soltarMoscas();
+  soltarMoscas("abertura-moscas", 4);
+  renderizarAbertura();
 
   new QWebChannel(qt.webChannelTransport, async (canal) => {
     ponte = canal.objects.ponte;
@@ -3091,6 +3400,7 @@ function conectar() {
     renderizar();
     verificarOllamaSilencioso();
     receberCatalogo(await chamar("discoCatalogo"));
+    rodarAbertura();
   });
 }
 

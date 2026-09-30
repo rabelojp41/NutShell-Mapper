@@ -102,7 +102,13 @@ pip install -r requirements.txt
 copy config\.env.example config\.env
 ```
 
-Preencha `config/.env` com suas chaves de API.
+Preencha `config/.env` com suas chaves de API, ou deixe para a interface:
+ao abrir, a tela de carregamento checa o ambiente (ponte, `.env`, chaves,
+fontes de reputacao, ATT&CK, Ollama) e, na primeira vez, sem nenhuma chave,
+para e mostra um campo por servico. Cada chave colada e gravada no
+`config/.env` e testada na hora contra o endpoint da propria conta do
+servico (aceita, rejeitada ou "nao deu para saber", quando a rede falha). A
+mesma tela fica em **Configuracao**, com **Testar todas**.
 
 ### Verificar a instalacao
 
@@ -546,6 +552,12 @@ python -m pytest -m "not lento"
 - **O artefato nunca e executado.** A analise e inteiramente estatica. Ainda
   assim, manipule amostras reais somente em maquina virtual isolada.
 - **Chaves de API somente via `.env`**, nunca hardcoded e nunca commitadas.
+  A interface so escreve no `.env` (gravacao atomica) e nunca devolve a
+  chave para a pagina, nem mascarada. So aceita as variaveis do catalogo e
+  recusa valor com quebra de linha, espaco, `#`, aspas ou `$`, que
+  injetariam uma segunda variavel no arquivo. O `.gitignore` cobre `.env`,
+  `config/.env` e qualquer variante (`config/.env.*`), exceto o modelo, e um
+  teste confere isso com `git check-ignore`.
   Os clients sanitizam qualquer mensagem de erro antes de ela virar log: o
   Shodan autentica por query string, e sem isso um timeout comum vazaria a
   credencial.

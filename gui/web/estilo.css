@@ -1746,3 +1746,197 @@ details.dobra[open] > summary::after { content: "▾"; }
 .contrib-item.confirmado { border-left-color: var(--ok); }
 .contrib-evidencias { margin: 0 0 8px; padding: 0; list-style: none; font-size: 12.5px; }
 .contrib-evidencias li { padding: 2px 0; }
+
+/* ---------- Chaves de API ----------
+ * Um cartao por servico. O campo comeca sempre vazio: a chave gravada
+ * nunca volta para a pagina, entao nao ha o que preencher.
+ */
+
+.status-servico.rejeitada { color: var(--alta); }
+.status-servico.rejeitada::before { background: var(--alta); }
+
+.secao-com-acao { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.chaves { display: grid; gap: 10px; }
+
+.chave-cartao {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 14px 16px 12px;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.chave-cartao:focus-within { border-color: var(--border-strong); }
+
+.chave-topo { display: flex; align-items: flex-start; gap: 16px; }
+.chave-texto { flex: 1; min-width: 0; }
+.chave-nome { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.chave-etiqueta {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--media);
+  background: var(--media-soft);
+  border-radius: 20px;
+  padding: 0 7px;
+  line-height: 17px;
+}
+.chave-desc { color: var(--text-3); font-size: 12px; margin-top: 1px; }
+.chave-libera { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chave-libera span {
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border-radius: var(--r-sm);
+  padding: 0 6px;
+  line-height: 18px;
+}
+
+.chave-linha { display: flex; gap: 8px; margin-top: 10px; }
+.chave-entrada { position: relative; flex: 1; min-width: 0; }
+.chave-entrada .campo { padding-right: 34px; }
+.chave-entrada .btn-icone { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+
+.chave-acoes { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 8px; margin-left: -8px; }
+.chave-msg { color: var(--text-3); font-size: 12px; margin-left: 6px; flex: 1; min-width: 180px; }
+.chave-msg.falha { color: var(--alta); }
+
+.chaves-rodape {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 2px 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.chaves-rodape svg { width: 14px; height: 14px; flex: none; color: var(--ok); }
+
+/* ---------- Abertura ----------
+ * Tela de carregamento: cada linha e uma checagem real. O vinil gira com a
+ * capa do album do toca-discos no selo.
+ */
+
+.abertura {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 28%, rgba(139, 124, 246, 0.10), transparent 70%),
+    var(--bg);
+  transition: opacity 0.45s ease;
+  overflow: hidden;
+}
+.abertura.saindo { opacity: 0; pointer-events: none; }
+
+.abertura-moscas { position: absolute; inset: 0; pointer-events: none; }
+
+.abertura-cartao {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  animation: subir 0.5s ease both;
+}
+.abertura.com-chaves .abertura-cartao { width: min(720px, 100%); }
+
+.abertura-marca { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px; }
+.abertura.com-chaves .abertura-marca { flex-direction: row; text-align: left; gap: 16px; margin-bottom: 18px; }
+
+.abertura-vinil {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    conic-gradient(from 20deg, rgba(255, 255, 255, 0.07), transparent 12%, transparent 45%, rgba(255, 255, 255, 0.05) 55%, transparent 68%),
+    repeating-radial-gradient(circle, #0c0c0f 0 1.5px, #17171c 1.5px 3px);
+  box-shadow: 0 0 0 1px #262630, 0 24px 60px rgba(0, 0, 0, 0.55);
+  animation: giro 2.4s linear infinite;
+  flex: none;
+}
+.abertura.com-chaves .abertura-vinil { width: 64px; height: 64px; }
+.abertura-vinil-rotulo {
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px #0c0c0f;
+  position: relative;
+}
+.abertura-vinil-rotulo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.abertura-vinil-rotulo::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+.abertura-titulo {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.abertura.com-chaves .abertura-titulo { font-size: 18px; }
+.abertura-sub { margin: 2px 0 0; color: var(--text-3); }
+
+.abertura-etapas { list-style: none; margin: 26px 0 0; padding: 0; }
+.abertura-etapa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--border);
+  animation: subir 0.3s ease both;
+}
+.abertura-etapa:last-child { border-bottom: 0; }
+.abertura-etapa-icone {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.abertura-etapa-icone svg { width: 14px; height: 14px; }
+.abertura-etapa.ok .abertura-etapa-icone { color: var(--ok); }
+.abertura-etapa.aviso .abertura-etapa-icone { color: var(--media); }
+.abertura-etapa.pendente .abertura-etapa-icone::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+  border-top-color: transparent;
+  animation: giro 0.8s linear infinite;
+}
+.abertura-etapa-rotulo { flex: 1; }
+.abertura-etapa-detalhe { color: var(--text-3); font-size: 12px; text-align: right; }
+
+.abertura-barra { height: 3px; border-radius: 3px; background: var(--surface-3); margin-top: 18px; overflow: hidden; }
+.abertura-barra span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s ease; }
+
+.abertura-acoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.abertura-acoes .btn svg { width: 14px; height: 14px; }
+
+.abertura-chaves { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.abertura-chaves-cabeca { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.abertura-chaves-cabeca h2 { font-size: 15px; margin: 0; }
+.abertura-chaves-cabeca p { margin: 3px 0 0; color: var(--text-3); max-width: 520px; }
+.abertura-chaves-lista { overflow-y: auto; min-height: 0; flex: 1; padding-right: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .abertura-vinil, .abertura-etapa.pendente .abertura-etapa-icone::before { animation: none; }
+}
